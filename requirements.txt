@@ -1,0 +1,13 @@
+# Core dependencies
+pandas>=1.5.0
+langgraph>=0.1.0
+sqlalchemy>=1.4.0
+
+# Optional dependencies for enhanced functionality
+numpy>=1.21.0
+typing-extensions>=4.0.0
+
+# Development dependencies (optional)
+pytest>=7.0.0
+black>=22.0.0
+flake8>=5.0.0
