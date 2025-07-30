@@ -5,13 +5,22 @@ class GraphState(TypedDict):
     df: pd.DataFrame
     goal: str
     target_column: str
-    null_suggestions: Optional[Dict[str, str]]
-    null_critique: Optional[Dict[str, str]]
+    
+    # Null handling
+    null_suggestions: Optional[str]
+    null_critique: Optional[str]
     null_iterations: Optional[int]
+    
+    # Duplicate handling
     duplicate_suggestion: Optional[str]
+    duplicate_analysis: Optional[Dict[str, Any]]
     duplicate_critique: Optional[str]
+    duplicate_critique_reasoning: Optional[str]
     duplicate_iterations: Optional[int]
-    type_suggestion: Optional[Dict[str, str]]
-    type_suggestions: Optional[List[str]]
+    
+    # Type handling
+    type_suggestion: Optional[str]
     type_analysis: Optional[Dict[str, Any]]
+    type_critique: Optional[str]
+    type_critique_reasoning: Optional[str]
     type_iterations: Optional[int]

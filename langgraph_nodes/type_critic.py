@@ -1,48 +1,52 @@
 from typing import Dict, Any
 import pandas as pd
+from config.llm_config import llm, TYPE_STRATEGY_PROMPT
 
 def type_critic_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Analyzes and critiques data types in the DataFrame.
-    Suggests type conversions and identifies potential issues.
+    Analyzes and critiques data types using LLM suggestions.
     """
     df = state.get("df")
     if df is None:
         return state
     
-    # Analyze data types
-    type_analysis = {}
-    suggestions = []
+    # Get the type suggestions from type_check_node
+    type_suggestion = state.get("type_suggestion", "")
+    type_analysis = state.get("type_analysis", {})
     
-    for column in df.columns:
-        col_data = df[column]
-        current_dtype = str(col_data.dtype)
-        
-        # Check for potential type improvements
-        if current_dtype == 'object':
-            # Check if it can be converted to numeric
-            try:
-                pd.to_numeric(col_data, errors='raise')
-                suggestions.append(f"Column '{column}' can be converted to numeric")
-            except (ValueError, TypeError):
-                # Check if it's categorical
-                unique_ratio = col_data.nunique() / len(col_data)
-                if unique_ratio < 0.1:  # Less than 10% unique values
-                    suggestions.append(f"Column '{column}' should be categorical")
-        
-        # Check for missing values that affect type inference
-        null_count = col_data.isnull().sum()
-        if null_count > 0:
-            suggestions.append(f"Column '{column}' has {null_count} missing values")
-        
-        type_analysis[column] = {
-            'current_type': current_dtype,
-            'null_count': int(null_count),
-            'unique_count': int(col_data.nunique())
+    # Use LLM to critique the type analysis
+    if type_analysis:
+        context = {
+            "goal": state.get("goal", ""),
+            "type_analysis": str(type_analysis),
+            "llm_suggestions": type_suggestion
         }
-    
-    # Update state with type analysis
-    state['type_analysis'] = type_analysis
-    state['type_suggestions'] = suggestions
+        
+        critique_prompt = f"""
+        You are a data type critic. Evaluate the following type analysis and LLM suggestions.
+        
+        User Goal: {context['goal']}
+        Type Analysis: {context['type_analysis']}
+        LLM Suggestions: {context['llm_suggestions']}
+        
+        Determine if immediate type optimization is needed for preprocessing. 
+        Respond with 'yes' if types need optimization, 'no' if current types are acceptable.
+        Consider the user's preprocessing goal and data quality requirements.
+        """
+        
+        response = llm.invoke(critique_prompt)
+        critique_result = response.content.strip().lower()
+        
+        # Extract yes/no decision
+        if "yes" in critique_result:
+            state["type_critique"] = "yes"
+        else:
+            state["type_critique"] = "no"
+            
+        # Store the full critique reasoning
+        state["type_critique_reasoning"] = response.content
+    else:
+        state["type_critique"] = "no"
+        state["type_critique_reasoning"] = "No type analysis available"
     
     return state
