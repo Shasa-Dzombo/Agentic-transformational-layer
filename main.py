@@ -1,15 +1,16 @@
 import pandas as pd
 import os
+import json
 from dotenv import load_dotenv
 from langgraph_nodes.graph_builder import builder
+from config.schema_mapper import MultiTableSchemaMapper
+from database.db_handler import SupabaseClientHandler
 
 # Load environment variables
 load_dotenv()
 
 def load_csv_data(file_path: str) -> pd.DataFrame:
-    """
-    Load entire CSV dataset without sampling
-    """
+    """Load entire CSV dataset without sampling"""
     try:
         df = pd.read_csv(file_path)
         print(f"Successfully loaded {len(df)} rows and {len(df.columns)} columns from {file_path}")
@@ -25,15 +26,47 @@ def load_csv_data(file_path: str) -> pd.DataFrame:
         print(f"Error loading CSV: {e}")
         return None
 
-if __name__ == "__main__":
-    # Configuration - Update these for your dataset
-    CSV_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/data/df_sample.csv"
-    ANALYSIS_GOAL = "do the necessary pre_checks and preprocessing of the dataset"
-
-    # Load the entire dataset
-    print("Loading dataset...")
-    df = load_csv_data(CSV_FILE_PATH)
+def setup_supabase_client():
+    """Setup Supabase client from environment variables"""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_CLIENT_KEY")
     
+    if not supabase_url or not supabase_key:
+        raise ValueError("""
+        Supabase credentials not found. Please set in your .env file:
+        
+        SUPABASE_URL=https://your-project-ref.supabase.co
+        SUPABASE_CLIENT_KEY=your_supabase_service_role_key
+        
+        Get these from your Supabase project dashboard:
+        1. Go to Settings → API
+        2. Copy Project URL and service_role key
+        """)
+    
+    return supabase_url, supabase_key
+
+if __name__ == "__main__":
+    # Configuration
+    CSV_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/data/df_sample.csv"
+    SCHEMA_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/config/database_schema.json"
+    ANALYSIS_GOAL = "do the necessary pre_checks and preprocessing of the dataset for multi-table database loading"
+
+    # Setup Supabase client
+    try:
+        supabase_url, supabase_key = setup_supabase_client()
+        print("✅ Supabase client configuration loaded")
+        print(f"   URL: {supabase_url}")
+        print(f"   Key: {supabase_key[:20]}...")
+    except ValueError as e:
+        print(f"❌ {e}")
+        exit(1)
+
+    # Step 1: Load and preprocess data
+    print("="*80)
+    print("STEP 1: LOADING AND PREPROCESSING DATA")
+    print("="*80)
+    
+    df = load_csv_data(CSV_FILE_PATH)
     if df is None:
         print("Failed to load data. Please check the file path and try again.")
         exit(1)
@@ -43,55 +76,142 @@ if __name__ == "__main__":
     print("DATASET OVERVIEW:")
     print("="*50)
     print(f"Shape: {df.shape}")
-    print(f"Data types:\n{df.dtypes}")
-    print(f"\nMissing values per column:\n{df.isnull().sum()}")
-    print(f"\nFirst 5 rows:\n{df.head()}")
+    print(f"Sample columns: {list(df.columns[:10])}")
     
-    # Prepare state for the workflow (no target column needed)
+    # Prepare state for the workflow
     state = {
         "df": df,
         "goal": ANALYSIS_GOAL
     }
     
     print(f"\n" + "="*50)
-    print("STARTING DATA PREPROCESSING WORKFLOW")
+    print("PREPROCESSING WORKFLOW")
     print("="*50)
-    print(f"Goal: {ANALYSIS_GOAL}")
-    print(f"Processing {len(df)} rows...")
     
     # Run the complete preprocessing workflow
     app = builder.compile()
     final_state = app.invoke(state)
     
-    print("\n" + "="*60)
-    print("PREPROCESSING RESULTS:")
-    print("="*60)
+    processed_df = final_state["df"]
+    preprocessing_results = {
+        "null_suggestions": final_state.get("null_suggestions", ""),
+        "duplicate_suggestions": final_state.get("duplicate_suggestion", ""),
+        "type_suggestions": final_state.get("type_suggestion", ""),
+        "type_analysis": final_state.get("type_analysis", {})
+    }
     
-    # Display results in organized way
-    for key, value in final_state.items():
-        if key == "df":
-            processed_df = value
-            print(f"Processed DataFrame: {processed_df.shape}")
-        elif "reasoning" in key:
-            print(f"\n{key.replace('_', ' ').title()}:")
-            print("-" * 40)
-            print(f"{value}")
-        elif "suggestions" in key:
-            print(f"\n{key.replace('_', ' ').title()}:")
-            print("-" * 40)
-            print(f"{value}")
+    print(f"✅ Preprocessing completed. Shape: {processed_df.shape}")
+    
+    # Step 2: Multi-table schema mapping
+    print("\n" + "="*80)
+    print("STEP 2: MULTI-TABLE SCHEMA MAPPING")
+    print("="*80)
+    
+    try:
+        # Initialize multi-table schema mapper
+        schema_mapper = MultiTableSchemaMapper(SCHEMA_FILE_PATH)
+        
+        # Map preprocessed data to multiple tables
+        mapped_tables = schema_mapper.map_dataframe_to_tables(processed_df, preprocessing_results)
+        
+        print(f"\n✅ Schema mapping completed")
+        print(f"📋 Tables created: {list(mapped_tables.keys())}")
+        
+        for table_name, table_df in mapped_tables.items():
+            print(f"   {table_name}: {table_df.shape[0]} rows, {table_df.shape[1]} columns")
+        
+    except Exception as e:
+        print(f"❌ Schema mapping failed: {e}")
+        print("Please check your schema file and try again.")
+        exit(1)
+    
+    # Step 3: Supabase client operations
+    print("\n" + "="*80)
+    print("STEP 3: SUPABASE CLIENT OPERATIONS")
+    print("="*80)
+    
+    try:
+        # Load schema for database operations
+        with open(SCHEMA_FILE_PATH, 'r') as f:
+            schema_config = json.load(f)
+        
+        # Initialize Supabase client handler
+        db_handler = SupabaseClientHandler(supabase_url, supabase_key, schema_config)
+        
+        # Test connection
+        if not db_handler.test_connection():
+            print("⚠️  Connection test had issues but proceeding...")
+        
+        # Validate all tables
+        validation_results = db_handler.validate_all_tables(mapped_tables)
+        
+        # Check if we can proceed with saving
+        all_valid = all(result['valid'] for result in validation_results.values())
+        
+        print(f"\n📊 Validation Summary:")
+        print(f"   Status: {'✅ All Valid' if all_valid else '⚠️  Some Issues'}")
+        
+        # Show validation details
+        for table_name, result in validation_results.items():
+            if result['errors']:
+                print(f"\n❌ {table_name} Errors:")
+                for error in result['errors']:
+                    print(f"   • {error}")
+            if result['warnings']:
+                print(f"\n⚠️  {table_name} Warnings:")
+                for warning in result['warnings']:
+                    print(f"   • {warning}")
+        
+        # Save to Supabase
+        proceed = all_valid or input(f"\nProceed with {len(mapped_tables)} tables despite warnings? (y/n): ").lower() == 'y'
+        
+        if proceed:
+            save_results = db_handler.save_mapped_tables(mapped_tables)
+            successful_saves = sum(save_results.values())
+            
+            if successful_saves > 0:
+                print(f"\n🎉 Supabase loading completed!")
+                print(f"   Database: Supabase (Client API)")
+                print(f"   Tables saved: {successful_saves}/{len(mapped_tables)}")
+                
+                # Show final stats
+                total_records = sum(len(df) for df in mapped_tables.values())
+                print(f"   Total records: {total_records}")
+                
+                # Query sample data to verify
+                print(f"\n📊 Verifying data in Supabase:")
+                for table_name in list(mapped_tables.keys())[:2]:  # Check first 2 tables
+                    try:
+                        count = db_handler.get_table_count(table_name)
+                        sample_data = db_handler.query_table(table_name, limit=3)
+                        print(f"   ✅ {table_name}: {count} records")
+                        if not sample_data.empty:
+                            print(f"      Sample columns: {list(sample_data.columns)}")
+                    except Exception as e:
+                        print(f"   ⚠️  {table_name}: Could not verify - {e}")
+                
+            else:
+                print(f"\n❌ Failed to save any tables to Supabase")
         else:
-            print(f"{key}: {value}")
+            print("❌ Supabase loading cancelled")
+            
+    except Exception as e:
+        print(f"❌ Supabase operations failed: {e}")
+        print(f"Error details: {str(e)}")
+        exit(1)
     
-    # Optional: Save processed dataset
-    print(f"\n" + "="*50)
-    save_option = input("Save processed dataset to CSV? (y/n): ").lower().strip()
-    if save_option == 'y':
-        output_path = "data/processed_dataset.csv"
-        os.makedirs("data", exist_ok=True)  # Create data directory if it doesn't exist
-        final_state["df"].to_csv(output_path, index=False)
-        print(f"✅ Processed dataset saved to {output_path}")
-        print(f"   Original shape: {df.shape}")
-        print(f"   Processed shape: {final_state['df'].shape}")
+    # Step 4: Final Summary
+    print("\n" + "="*80)
+    print("SUPABASE CLIENT WORKFLOW COMPLETED! 🎉")
+    print("="*80)
+    print(f"📥 Original data: {df.shape[0]} rows, {df.shape[1]} columns")
+    print(f"🔄 Processed data: {processed_df.shape[0]} rows, {processed_df.shape[1]} columns")
+    print(f"🗂️  Tables created: {len(mapped_tables)}")
     
-    print("\n🎉 Data preprocessing workflow completed successfully!")
+    for table_name, table_df in mapped_tables.items():
+        print(f"   📋 {table_name}: {len(table_df)} records")
+    
+    print(f"💾 Database: Supabase (via Client API)")
+    print(f"🌐 URL: {supabase_url}")
+    print("\nYour data has been preprocessed and loaded into Supabase! 🚀")
+    print("\n🔗 Access your data at: https://app.supabase.com/project/[your-project]/editor")

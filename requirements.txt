@@ -20,3 +20,7 @@ flake8>=5.0.0
 
 # Environment variable management
 python-dotenv>=1.0.0
+
+# Supabase support
+psycopg2-binary>=2.9.5
+supabase>=2.0.0
