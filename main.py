@@ -3,7 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 from langgraph_nodes.graph_builder import builder
-from config.schema_mapper import MultiTableSchemaMapper
+from config.enhanced_ai_schema_mapper import EnhancedAISchemaMapper  # Enhanced AI mapper
 from database.db_handler import SupabaseClientHandler
 
 # Load environment variables
@@ -37,10 +37,6 @@ def setup_supabase_client():
         
         SUPABASE_URL=https://your-project-ref.supabase.co
         SUPABASE_CLIENT_KEY=your_supabase_service_role_key
-        
-        Get these from your Supabase project dashboard:
-        1. Go to Settings → API
-        2. Copy Project URL and service_role key
         """)
     
     return supabase_url, supabase_key
@@ -48,7 +44,7 @@ def setup_supabase_client():
 if __name__ == "__main__":
     # Configuration
     CSV_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/data/df_sample.csv"
-    SCHEMA_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/config/database_schema.json"
+    SCHEMA_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/database/database_schema.json"
     ANALYSIS_GOAL = "do the necessary pre_checks and preprocessing of the dataset for multi-table database loading"
 
     # Setup Supabase client
@@ -102,27 +98,28 @@ if __name__ == "__main__":
     
     print(f"✅ Preprocessing completed. Shape: {processed_df.shape}")
     
-    # Step 2: Multi-table schema mapping
+    # Step 2: AI-Powered Schema Mapping
     print("\n" + "="*80)
-    print("STEP 2: MULTI-TABLE SCHEMA MAPPING")
+    print("STEP 2: AI-POWERED SCHEMA MAPPING")
     print("="*80)
     
     try:
-        # Initialize multi-table schema mapper
-        schema_mapper = MultiTableSchemaMapper(SCHEMA_FILE_PATH)
+        # Initialize Enhanced AI schema mapper
+        ai_mapper = EnhancedAISchemaMapper(SCHEMA_FILE_PATH)
         
-        # Map preprocessed data to multiple tables
-        mapped_tables = schema_mapper.map_dataframe_to_tables(processed_df, preprocessing_results)
+        # Show schema intelligence
+        print(f"🧠 Schema intelligence built:")
+        print(f"   Autonomous table analysis: {len(ai_mapper.schema_intelligence['table_purposes'])}")
+        print(f"   Semantic field mapping: {sum(len(fields) for fields in ai_mapper.schema_intelligence['field_semantics'].values())}")
         
-        print(f"\n✅ Schema mapping completed")
-        print(f"📋 Tables created: {list(mapped_tables.keys())}")
+        # Use autonomous AI to map data
+        mapped_tables = ai_mapper.map_dataframe_to_tables(processed_df, preprocessing_results)
         
-        for table_name, table_df in mapped_tables.items():
-            print(f"   {table_name}: {table_df.shape[0]} rows, {table_df.shape[1]} columns")
+        print(f"\n✅ Autonomous AI schema mapping completed")
+        print(f"📋 Intelligently created tables: {list(mapped_tables.keys())}")
         
     except Exception as e:
-        print(f"❌ Schema mapping failed: {e}")
-        print("Please check your schema file and try again.")
+        print(f"❌ Autonomous AI mapping failed: {e}")
         exit(1)
     
     # Step 3: Supabase client operations
@@ -170,7 +167,7 @@ if __name__ == "__main__":
             successful_saves = sum(save_results.values())
             
             if successful_saves > 0:
-                print(f"\n🎉 Supabase loading completed!")
+                print(f"\n🎉 AI-powered Supabase loading completed!")
                 print(f"   Database: Supabase (Client API)")
                 print(f"   Tables saved: {successful_saves}/{len(mapped_tables)}")
                 
@@ -202,16 +199,16 @@ if __name__ == "__main__":
     
     # Step 4: Final Summary
     print("\n" + "="*80)
-    print("SUPABASE CLIENT WORKFLOW COMPLETED! 🎉")
+    print("AI-POWERED SUPABASE WORKFLOW COMPLETED! 🎉")
     print("="*80)
     print(f"📥 Original data: {df.shape[0]} rows, {df.shape[1]} columns")
     print(f"🔄 Processed data: {processed_df.shape[0]} rows, {processed_df.shape[1]} columns")
-    print(f"🗂️  Tables created: {len(mapped_tables)}")
+    print(f"🤖 AI-mapped tables: {len(mapped_tables)}")
     
     for table_name, table_df in mapped_tables.items():
         print(f"   📋 {table_name}: {len(table_df)} records")
     
     print(f"💾 Database: Supabase (via Client API)")
     print(f"🌐 URL: {supabase_url}")
-    print("\nYour data has been preprocessed and loaded into Supabase! 🚀")
+    print("\nYour data has been intelligently mapped and loaded into Supabase! 🚀")
     print("\n🔗 Access your data at: https://app.supabase.com/project/[your-project]/editor")
