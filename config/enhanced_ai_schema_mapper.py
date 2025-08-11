@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
+from config.schema_validator import DynamicSchemaValidator
 
 class SemanticCategory(Enum):
     """Semantic categories for intelligent column classification"""
@@ -37,7 +38,7 @@ class EnhancedAISchemaMapper:
     """Simplified deterministic schema mapper - NO AI, NO JSON parsing issues"""
     
     def __init__(self, schema_file_path: str, api_key: str = None):
-        """Initialize simplified schema mapper"""
+        """Initialize Enhanced AI Schema Mapper with dynamic validation"""
         self.schema_file_path = schema_file_path
         self.schema = self.load_schema()
         self.tables = self.schema['database']['tables']
@@ -51,6 +52,10 @@ class EnhancedAISchemaMapper:
         
         print(f"🔍 Schema loaded with {len(self.tables)} tables")
         self._print_available_columns()
+        
+        # Add dynamic validator
+        self.schema_validator = DynamicSchemaValidator(schema_file_path)
+        print("🔧 Dynamic schema validator initialized")
     
     def load_schema(self) -> Dict[str, Any]:
         """Load database schema"""
@@ -608,36 +613,123 @@ Return ONLY valid JSON in this format:
         
         print(f"\n🎯 Smart AI mapping completed successfully! ✅")
 
-    def map_dataframe_to_tables(self, df: pd.DataFrame, preprocessing_results: Dict[str, Any] = None) -> Dict[str, pd.DataFrame]:
-        """Main mapping method - Smart AI with precise validation"""
-        print(f"\n🧠 Starting SMART AI schema mapping for {len(df.columns)} columns...")
+    def validate_and_enhance_tables(self, mapped_tables: Dict[str, pd.DataFrame], 
+                                   source_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """
+        Dynamically validate and enhance all mapped tables based on schema requirements
+        """
         
-        # Step 1: Analyze columns
-        intelligent_analysis = self.intelligent_column_analysis(df)
+        print("\n🚀 DYNAMIC SCHEMA VALIDATION & ENHANCEMENT")
+        print("="*60)
         
-        # Step 2: Get smart AI mapping (with fallback)
-        try:
-            mapping_result = self.get_smart_ai_mapping(df)
-        except:
-            print("🔧 AI mapping failed, using deterministic fallback...")
-            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
+        enhanced_tables = {}
+        validation_results = {}
         
-        # Step 3: Validate mappings
-        validation = self._validate_mappings(mapping_result, df)
+        # Step 1: Validate all tables
+        print("\n🔍 Validating tables against schema requirements...")
+        for table_name, table_df in mapped_tables.items():
+            validation = self.schema_validator.validate_table_data(table_name, table_df)
+            validation_results[table_name] = validation
+            
+            if validation['valid']:
+                print(f"   ✅ {table_name}: Valid")
+            else:
+                print(f"   ⚠️  {table_name}: {len(validation['missing_required'])} required fields missing")
         
-        if not validation['valid']:
-            print(f"❌ Mapping validation failed:")
-            for error in validation['errors']:
-                print(f"   • {error}")
-            print(f"🔧 Using deterministic fallback...")
-            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
-            validation = self._validate_mappings(mapping_result, df)
+        # Step 2: Enhance tables with missing requirements
+        print("\n🔧 Enhancing tables with schema requirements...")
+        for table_name, table_df in mapped_tables.items():
+            try:
+                enhanced_df = self.schema_validator.enhance_table_with_requirements(
+                    table_name, table_df, source_df
+                )
+                enhanced_tables[table_name] = enhanced_df
+                print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
+                
+            except Exception as e:
+                print(f"   ❌ Failed to enhance {table_name}: {e}")
+                enhanced_tables[table_name] = table_df  # Use original if enhancement fails
         
-        # Step 4: Create tables
-        mapped_tables = self._create_tables(df, mapping_result, intelligent_analysis)
+        # Step 3: Final validation
+        print("\n✅ Final validation after enhancement...")
+        final_validation_results = {}
+        for table_name, enhanced_df in enhanced_tables.items():
+            validation = self.schema_validator.validate_table_data(table_name, enhanced_df)
+            final_validation_results[table_name] = validation
+            
+            if validation['valid']:
+                print(f"   ✅ {table_name}: Fully compliant")
+            else:
+                remaining_issues = len(validation['missing_required'])
+                print(f"   ⚠️  {table_name}: {remaining_issues} issues remain")
         
-        # Step 5: Print summary
-        self._print_summary(mapping_result, mapped_tables, intelligent_analysis)
+        # Step 4: Print comprehensive summary
+        summary = self.schema_validator.get_validation_summary(final_validation_results)
+        self._print_validation_summary(summary, validation_results, final_validation_results)
         
-        return mapped_tables
+        return enhanced_tables
+
+def _print_validation_summary(self, summary: Dict[str, Any], 
+                            before_validation: Dict[str, Dict[str, Any]],
+                            after_validation: Dict[str, Dict[str, Any]]):
+    """Print comprehensive validation summary"""
+    
+    print("\n" + "="*80)
+    print("📊 DYNAMIC VALIDATION & ENHANCEMENT SUMMARY")
+    print("="*80)
+    
+    print(f"\n📈 Validation Results:")
+    print(f"   Total tables processed: {summary['total_tables']}")
+    print(f"   Fully compliant tables: {summary['valid_tables']}")
+    print(f"   Tables with issues: {summary['invalid_tables']}")
+    
+    print(f"\n🔧 Enhancement Impact:")
+    before_issues = sum(len(v['missing_required']) for v in before_validation.values())
+    after_issues = sum(len(v['missing_required']) for v in after_validation.values())
+    resolved_issues = before_issues - after_issues
+    
+    print(f"   Issues before enhancement: {before_issues}")
+    print(f"   Issues after enhancement: {after_issues}")
+    print(f"   Issues resolved: {resolved_issues}")
+    print(f"   Resolution rate: {(resolved_issues/before_issues)*100:.1f}%" if before_issues > 0 else "   Resolution rate: 100%")
+    
+    if after_issues > 0:
+        print(f"\n⚠️  Remaining issues:")
+        for error in summary['all_errors']:
+            print(f"      • {error}")
+    
+    print(f"\n🎯 Schema Compliance: {'✅ ACHIEVED' if summary['overall_valid'] else '⚠️  PARTIAL'}")
+
+# Update the map_dataframe_to_tables method to use dynamic validation:
+
+def map_dataframe_to_tables(self, df: pd.DataFrame, preprocessing_results: Dict[str, Any] = None) -> Dict[str, pd.DataFrame]:
+    """Enhanced mapping with dynamic schema validation"""
+    
+    print(f"\n🧠 Starting DYNAMIC AI schema mapping for {len(df.columns)} columns...")
+    
+    # Step 1: Analyze columns
+    intelligent_analysis = self.intelligent_column_analysis(df)
+    
+    # Step 2: Get smart AI mapping (with fallback)
+    try:
+        mapping_result = self.get_smart_ai_mapping(df)
+    except:
+        print("🔧 AI mapping failed, using deterministic fallback...")
+        mapping_result = self._create_deterministic_mappings(intelligent_analysis)
+    
+    validation = self._validate_mappings(mapping_result, df)
+    if not validation['valid']:
+        print(f"🔧 Using deterministic fallback due to validation issues...")
+        mapping_result = self._create_deterministic_mappings(intelligent_analysis)
+    
+    # Create base tables
+    base_tables = self._create_tables(df, mapping_result, intelligent_analysis)
+    
+    # **NEW: Dynamic validation and enhancement**
+    enhanced_tables = self.validate_and_enhance_tables(base_tables, df)
+    
+    # Print final summary
+    self._print_enhanced_summary(mapping_result, enhanced_tables, intelligent_analysis)
+    
+    return enhanced_tables
 
