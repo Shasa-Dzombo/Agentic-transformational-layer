@@ -102,10 +102,12 @@ class DynamicSchemaValidator:
         # Determine if field is required (NOT NULL and no default)
         nullable = field_config.get('nullable', True)
         has_default = 'DEFAULT' in type_str.upper() or 'default' in field_config
-        is_required = not nullable and not has_default
         
         # Check for primary key
         is_primary_key = field_config.get('primary_key', False)
+        
+        # Primary keys are always required (even if not explicitly marked as NOT NULL)
+        is_required = (not nullable and not has_default) or is_primary_key
         
         # Check for foreign key
         is_foreign_key = 'foreign_key' in field_config
@@ -114,14 +116,17 @@ class DynamicSchemaValidator:
             ref_info = field_config.get('foreign_key', {})
             references = ref_info.get('references', '')
         
-        # Check for auto-increment
-        auto_increment = 'nextval' in type_str or 'SERIAL' in type_str.upper()
+        # Check for auto-increment (primary keys with nextval are auto-increment)
+        auto_increment = ('nextval' in type_str.lower() or 'SERIAL' in type_str.upper() or 
+                         (is_primary_key and 'DEFAULT' in type_str.upper()))
         
         # Extract default value
         default_value = self._extract_default_value(type_str, field_config)
         
         # Parse constraints
         constraints = self._parse_constraints(type_str, field_config)
+        
+        print(f"   📋 Parsed field '{field_name}': {data_type}, Required: {is_required}, PK: {is_primary_key}, Auto: {auto_increment}")
         
         return FieldRequirement(
             field_name=field_name,
@@ -270,6 +275,10 @@ class DynamicSchemaValidator:
         enhanced_df = table_df.copy()
         
         print(f"🔧 Dynamically enhancing '{table_name}' based on schema requirements...")
+        print(f"   📊 Input: {len(enhanced_df)} rows, {len(enhanced_df.columns)} columns")
+        
+        # Track what we're adding
+        added_fields = []
         
         # Add missing required fields
         for field_name, field_req in requirements.required_fields.items():
@@ -278,19 +287,31 @@ class DynamicSchemaValidator:
                     field_req, len(enhanced_df), source_data_df
                 )
                 enhanced_df[field_name] = default_values
+                added_fields.append(f"{field_name} ({field_req.data_type})")
                 print(f"   ✅ Added required field: {field_name} ({field_req.data_type})")
         
-        # Add missing optional fields with defaults if they have meaningful defaults
+        # Add missing optional fields with meaningful defaults
         for field_name, field_req in requirements.optional_fields.items():
-            if field_name not in enhanced_df.columns and field_req.default_value:
-                default_values = self._generate_field_values(
-                    field_req, len(enhanced_df), source_data_df
-                )
-                enhanced_df[field_name] = default_values
-                print(f"   ✅ Added optional field: {field_name} ({field_req.data_type})")
+            if field_name not in enhanced_df.columns:
+                # Only add optional fields if they have meaningful defaults or are commonly needed
+                if (field_req.default_value or 
+                    any(keyword in field_name.lower() for keyword in ['created_at', 'updated_at', 'status'])):
+                    default_values = self._generate_field_values(
+                        field_req, len(enhanced_df), source_data_df
+                    )
+                    enhanced_df[field_name] = default_values
+                    added_fields.append(f"{field_name} ({field_req.data_type}, optional)")
+                    print(f"   ✅ Added optional field: {field_name} ({field_req.data_type})")
         
         # Convert data types for existing fields
         enhanced_df = self._convert_data_types(enhanced_df, requirements)
+        
+        # Summary
+        print(f"   📊 Result: {len(enhanced_df)} rows, {len(enhanced_df.columns)} columns")
+        if added_fields:
+            print(f"   🆕 Added {len(added_fields)} fields: {', '.join(added_fields[:3])}")
+            if len(added_fields) > 3:
+                print(f"      ... and {len(added_fields) - 3} more")
         
         return enhanced_df
     
@@ -301,54 +322,90 @@ class DynamicSchemaValidator:
         field_name = field_req.field_name
         data_type = field_req.data_type
         
+        print(f"      🔧 Generating {row_count} values for '{field_name}' ({data_type})")
+        
         # Handle auto-increment fields
         if field_req.auto_increment or field_req.is_primary_key:
-            return list(range(1, row_count + 1))
+            values = list(range(1, row_count + 1))
+            print(f"         ✅ Generated auto-increment IDs: 1 to {row_count}")
+            return values
         
         # Handle foreign keys - try to find matching values
         if field_req.is_foreign_key and source_data_df is not None:
-            return self._generate_foreign_key_values(field_req, row_count, source_data_df)
+            fk_values = self._generate_foreign_key_values(field_req, row_count, source_data_df)
+            if fk_values:
+                print(f"         ✅ Generated foreign key values from source data")
+                return fk_values
         
         # Handle fields with explicit defaults
         if field_req.default_value:
             if field_req.default_value == 'CURRENT_TIMESTAMP':
-                return [pd.Timestamp.now()] * row_count
+                values = [pd.Timestamp.now()] * row_count
+                print(f"         ✅ Generated current timestamps")
+                return values
             elif field_req.default_value == 'AUTO_INCREMENT':
-                return list(range(1, row_count + 1))
+                values = list(range(1, row_count + 1))
+                print(f"         ✅ Generated auto-increment values")
+                return values
             else:
-                return [field_req.default_value] * row_count
+                values = [field_req.default_value] * row_count
+                print(f"         ✅ Used default value: {field_req.default_value}")
+                return values
         
-        # Generate type-appropriate defaults
+        # Generate type-appropriate defaults with robust handling
+        print(f"         ⚙️  Generating smart defaults for {data_type} field")
+        
         if data_type == 'INTEGER':
             if 'id' in field_name.lower():
-                return list(range(1, row_count + 1))
-            return [0] * row_count
+                values = list(range(1, row_count + 1))
+                print(f"         ✅ Generated sequential IDs: 1 to {row_count}")
+                return values
+            else:
+                values = [1] * row_count  # Use 1 instead of 0 for better data quality
+                print(f"         ✅ Generated default integer value: 1")
+                return values
             
         elif data_type == 'NUMERIC':
-            return [0.0] * row_count
+            values = [0.0] * row_count
+            print(f"         ✅ Generated default numeric value: 0.0")
+            return values
             
         elif data_type == 'BOOLEAN':
-            return [False] * row_count
+            values = [False] * row_count
+            print(f"         ✅ Generated default boolean value: False")
+            return values
             
         elif data_type == 'DATE':
-            return ['2024-01-01'] * row_count
+            values = [pd.Timestamp('2024-01-01').date()] * row_count
+            print(f"         ✅ Generated default date: 2024-01-01")
+            return values
             
         elif data_type == 'TIMESTAMP':
-            return [pd.Timestamp.now()] * row_count
+            values = [pd.Timestamp.now()] * row_count
+            print(f"         ✅ Generated current timestamps")
+            return values
             
         elif data_type == 'UUID':
             import uuid
-            return [str(uuid.uuid4()) for _ in range(row_count)]
+            values = [str(uuid.uuid4()) for _ in range(row_count)]
+            print(f"         ✅ Generated {row_count} unique UUIDs")
+            return values
             
-        else:  # TEXT
-            return [self._generate_meaningful_text_default(field_name)] * row_count
+        else:  # TEXT/VARCHAR
+            default_text = self._generate_meaningful_text_default(field_name)
+            values = [default_text] * row_count
+            print(f"         ✅ Generated default text: '{default_text}'")
+            return values
     
     def _generate_meaningful_text_default(self, field_name: str) -> str:
         """Generate meaningful text defaults based on field name"""
         
         field_lower = field_name.lower()
         
-        if 'name' in field_lower:
+        # Specific handling for common field types
+        if 'outcome' in field_lower:
+            return "live_birth"  # Common for pregnancy outcomes
+        elif 'name' in field_lower:
             return f"Generated_{field_name}"
         elif 'code' in field_lower:
             return f"CODE_{int(pd.Timestamp.now().timestamp())}"
@@ -356,34 +413,94 @@ class DynamicSchemaValidator:
             return "active"
         elif 'type' in field_lower:
             return "default"
-        elif 'outcome' in field_lower:
-            return "unknown"
         elif 'description' in field_lower:
-            return "System generated"
+            return "System generated record"
+        elif 'relationship' in field_lower:
+            return "household_member"
+        elif 'event' in field_lower:
+            return "data_collection"
+        elif 'category' in field_lower:
+            return "general"
+        elif 'level' in field_lower:
+            return "primary"
         else:
             return f"default_{field_name}"
     
     def _generate_foreign_key_values(self, field_req: FieldRequirement, row_count: int, 
                                    source_data_df: pd.DataFrame) -> List[Any]:
-        """Generate foreign key values by looking for related data"""
+        """Generate foreign key values by looking for related data or creating reasonable defaults"""
+        
+        print(f"         🔗 Generating foreign key values for {field_req.field_name}")
         
         # Try to find related primary key values in source data
         if field_req.references:
             # Parse reference: "table.column"
             if '.' in field_req.references:
                 ref_table, ref_column = field_req.references.split('.', 1)
+                print(f"            References: {ref_table}.{ref_column}")
                 
                 # Look for potential matching columns in source data
                 potential_columns = [col for col in source_data_df.columns 
                                    if ref_column in col.lower() or ref_table in col.lower()]
                 
                 if potential_columns:
-                    # Use values from the first matching column
-                    ref_values = source_data_df[potential_columns[0]].fillna(0).astype(int)
-                    return ref_values.tolist()[:row_count]
+                    # Use values from the most relevant column
+                    best_column = potential_columns[0]
+                    available_values = source_data_df[best_column].dropna().unique()
+                    
+                    if len(available_values) > 0:
+                        print(f"            ✅ Found {len(available_values)} unique values in {best_column}")
+                        # Cycle through available values to fill all rows
+                        values = []
+                        for i in range(row_count):
+                            values.append(available_values[i % len(available_values)])
+                        return values
+                
+                # If no matching column found, generate reasonable defaults based on reference
+                print(f"            ⚠️  No matching column found, generating defaults")
+                return self._generate_default_foreign_key_values(ref_table, ref_column, row_count)
         
-        # Default to sequential IDs
+        # Fallback: generate sequential IDs
+        print(f"         ⚠️  No reference info, generating sequential IDs")
         return list(range(1, row_count + 1))
+    
+    def _generate_default_foreign_key_values(self, ref_table: str, ref_column: str, row_count: int) -> List[Any]:
+        """Generate reasonable default foreign key values based on the referenced table"""
+        
+        print(f"            🎯 Generating defaults for {ref_table}.{ref_column}")
+        
+        # Generate reasonable defaults based on common table patterns
+        if ref_table.lower() == 'individual':
+            # For individual references, create sequential individual IDs
+            values = list(range(1, row_count + 1))
+            print(f"            ✅ Generated individual IDs: 1 to {row_count}")
+            return values
+            
+        elif ref_table.lower() == 'household':
+            # For household references, group individuals into households
+            household_size = 4  # Average household size
+            values = []
+            for i in range(row_count):
+                household_id = (i // household_size) + 1
+                values.append(household_id)
+            print(f"            ✅ Generated household IDs with avg size {household_size}")
+            return values
+            
+        elif ref_table.lower() == 'site' or ref_table.lower() == 'village':
+            # For site/village references, distribute across a few locations
+            num_sites = max(1, row_count // 20)  # Roughly 20 people per site
+            values = []
+            for i in range(row_count):
+                site_id = (i % num_sites) + 1
+                values.append(site_id)
+            print(f"            ✅ Generated {num_sites} site/village IDs")
+            return values
+            
+        else:
+            # Generic case: sequential IDs
+            values = list(range(1, row_count + 1))
+            print(f"            ✅ Generated sequential IDs for {ref_table}")
+            return values
     
     def _convert_data_types(self, df: pd.DataFrame, requirements: TableRequirements) -> pd.DataFrame:
         """Convert DataFrame columns to match schema requirements"""

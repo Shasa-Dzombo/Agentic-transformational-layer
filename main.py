@@ -43,8 +43,8 @@ def setup_supabase_client():
 
 if __name__ == "__main__":
     # Configuration
-    CSV_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/data/df_sample.csv"
-    SCHEMA_FILE_PATH = "C:/Users/Amoro/APHRC_extractor/data_analyst_agent/database/database_schema.json"
+    CSV_FILE_PATH = r"C:\Users\killi\Desktop\Work\Agentic-transformational-layer\df_sample.csv"
+    SCHEMA_FILE_PATH = r"C:\Users\killi\Desktop\Work\Agentic-transformational-layer\database\database_schema.json"
     ANALYSIS_GOAL = "do the necessary pre_checks and preprocessing of the dataset for multi-table database loading"
 
     # Setup Supabase client
