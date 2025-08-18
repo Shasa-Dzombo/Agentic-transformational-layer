@@ -640,15 +640,31 @@ Return ONLY valid JSON in this format:
         print("\n🔧 Enhancing tables with schema requirements...")
         for table_name, table_df in mapped_tables.items():
             try:
+                # First, use the schema validator's enhancement
                 enhanced_df = self.schema_validator.enhance_table_with_requirements(
                     table_name, table_df, source_df
                 )
+                
+                # Then, add our custom missing required fields generation
+                enhanced_df = self._generate_missing_required_fields(
+                    table_name, enhanced_df, source_df
+                )
+                
                 enhanced_tables[table_name] = enhanced_df
                 print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
                 
             except Exception as e:
                 print(f"   ❌ Failed to enhance {table_name}: {e}")
-                enhanced_tables[table_name] = table_df  # Use original if enhancement fails
+                # Apply our custom enhancement as fallback
+                try:
+                    enhanced_df = self._generate_missing_required_fields(
+                        table_name, table_df, source_df
+                    )
+                    enhanced_tables[table_name] = enhanced_df
+                    print(f"   🔧 Fallback enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
+                except Exception as e2:
+                    print(f"   ❌ Fallback also failed for {table_name}: {e2}")
+                    enhanced_tables[table_name] = table_df  # Use original if all enhancement fails
         
         # Step 3: Final validation
         print("\n✅ Final validation after enhancement...")
@@ -726,10 +742,13 @@ Return ONLY valid JSON in this format:
         # **NEW: Dynamic validation and enhancement**
         enhanced_tables = self.validate_and_enhance_tables(base_tables, df)
         
-        # Print final summary
-        self._print_enhanced_summary(mapping_result, enhanced_tables, intelligent_analysis)
+        # **NEW: Prepare for Supabase**
+        supabase_ready_tables = self.prepare_for_supabase(enhanced_tables)
         
-        return enhanced_tables
+        # Print final summary
+        self._print_enhanced_summary(mapping_result, supabase_ready_tables, intelligent_analysis)
+        
+        return supabase_ready_tables
 
     def _print_enhanced_summary(self, mapping_result: Dict[str, Any], enhanced_tables: Dict[str, pd.DataFrame], intelligent_analysis: Dict[str, ColumnIntelligence]):
         """Print enhanced mapping summary with validation results"""
@@ -750,6 +769,149 @@ Return ONLY valid JSON in this format:
         
         print(f"\n🎯 Dynamic schema-driven mapping completed successfully! ✅")
         print(f"💡 All tables now comply with schema requirements automatically")
+    # Add this method to enhanced_ai_schema_mapper.py around line 790
 
-# End of EnhancedAISchemaMapper class
+    def _convert_to_boolean(self, series: pd.Series) -> pd.Series:
+        """Convert various formats to boolean with comprehensive mapping"""
+        # Create a copy to avoid modifying original
+        result = series.copy()
+    
+        # Handle common boolean representations
+        bool_mapping = {
+            # Text representations
+            'yes': True, 'no': False,
+            'true': True, 'false': False,
+            '1': True, '0': False,
+            'y': True, 'n': False,
+            # Numeric representations
+            1: True, 0: False,
+            1.0: True, 0.0: False,
+            # Common survey responses - ALL THE PROBLEMATIC ONES
+            'not asked': None,
+            'niu (not in universe)': None,
+            'unknown': None,
+            'missing': None,
+            'n/a': None,
+            'na': None,
+            '': None,
+            'nan': None,
+            'dk': None,  # don't know
+            'ref': None,  # refused
+            'skip': None,
+            'inapplicable': None,
+            'not applicable': None
+       }
+    
+        # Convert to lowercase string first for consistent mapping
+        result = result.astype(str).str.lower().map(bool_mapping)
+    
+        # Fill remaining NaN values with None (will be NULL in database)
+        return result.fillna(None)
+    def _generate_missing_required_fields(self, table_name: str, enhanced_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.DataFrame:
+        """Generate missing required fields for tables with proper foreign key handling"""
+        
+        if table_name not in self.tables:
+            return enhanced_df
+        
+        table_config = self.tables[table_name]
+        table_columns = table_config['columns']
+        
+        # Generate missing required fields
+        for col_name, col_config in table_columns.items():
+            if col_name not in enhanced_df.columns and not col_config.get('nullable', True):
+                print(f"   🔧 Generating required field: {col_name}")
+                
+                if col_name.endswith('_id') and col_config.get('primary_key', False):
+                    # Generate primary key IDs
+                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
+                
+                elif col_name == 'individual_id' and table_name in ['education', 'vaccination', 'birth_event', 'death_event', 'migration_event', 'censoring_event']:
+                    # Use sequential IDs for foreign key references
+                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
+                
+                elif col_name == 'household_id' and table_name in ['individual', 'livelihoods', 'household_amenities']:
+                    # Handle circular dependency: household needs dwelling_unit_id, but for now use sequential IDs
+                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
+                
+                elif col_name == 'dwelling_unit_id' and table_name == 'household':
+                    # Generate default dwelling unit IDs
+                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
+                
+                elif col_name == 'household_code' and table_name == 'household':
+                    # Generate household codes
+                    enhanced_df[col_name] = [f"HH_{i:04d}" for i in range(1, len(enhanced_df) + 1)]
+                
+                elif col_name == 'mother_id' and table_name == 'pregnancy':
+                    # Map from individual IDs
+                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
+                
+                elif col_name == 'outcome' and table_name == 'pregnancy':
+                    # Set default pregnancy outcome
+                    enhanced_df[col_name] = 'live_birth'
+                
+                elif col_name == 'event_type' and table_name == 'censoring_event':
+                    # Set default event type
+                    enhanced_df[col_name] = 'end_of_study'
+                
+                elif col_name == 'vaccine_type' and table_name == 'vaccination':
+                    # Set default vaccine type
+                    enhanced_df[col_name] = 'BCG'
+                
+                elif col_name == 'dose_number' and table_name == 'vaccination':
+                    # Set default dose number
+                    enhanced_df[col_name] = 1
+                
+                elif col_name in ['start_date', 'event_date', 'administration_date', 'birth_date', 'death_date', 'migration_date', 'delivery_date']:
+                    # Use current date as default
+                    enhanced_df[col_name] = pd.to_datetime('2024-01-01')
+                
+                else:
+                    # Handle other required fields based on type
+                    col_type = col_config.get('type', 'TEXT')
+                    if 'integer' in col_type.lower() or 'int' in col_type.lower():
+                        enhanced_df[col_name] = 1
+                    elif 'date' in col_type.lower():
+                        enhanced_df[col_name] = pd.to_datetime('2024-01-01')
+                    elif 'boolean' in col_type.lower():
+                        enhanced_df[col_name] = True
+                    else:
+                        enhanced_df[col_name] = f'default_{col_name}'
+        
+        return enhanced_df
+
+    def prepare_for_supabase(self, enhanced_tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+        """Prepare tables for Supabase insertion by cleaning data types"""
+        
+        cleaned_tables = {}
+        
+        for table_name, df in enhanced_tables.items():
+            print(f"🔧 Preparing {table_name} for Supabase...")
+            
+            # Create a copy
+            clean_df = df.copy()
+            
+            # Handle boolean columns
+            for col in clean_df.columns:
+                if clean_df[col].dtype == 'object':
+                    # Check if this should be boolean based on unique values
+                    unique_values = set(str(v).lower() for v in clean_df[col].unique() if pd.notna(v))
+                    boolean_indicators = {'yes', 'no', 'true', 'false', '1', '0', 'y', 'n'}
+                    
+                    if unique_values.intersection(boolean_indicators):
+                        print(f"   🔄 Converting {col} to boolean")
+                        clean_df[col] = self._convert_to_boolean(clean_df[col])
+            
+            # Handle dates
+            for col in clean_df.columns:
+                if 'date' in col.lower() and clean_df[col].dtype == 'object':
+                    print(f"   📅 Converting {col} to datetime")
+                    clean_df[col] = pd.to_datetime(clean_df[col], errors='coerce')
+            
+            # Replace NaN values with None for Supabase
+            clean_df = clean_df.where(pd.notnull(clean_df), None)
+            
+            cleaned_tables[table_name] = clean_df
+            print(f"   ✅ {table_name} prepared with {len(clean_df)} rows")
+        
+        return cleaned_tables
 

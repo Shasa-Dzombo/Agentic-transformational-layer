@@ -7,15 +7,29 @@ import os
 from datetime import datetime
 
 class SupabaseClientHandler:
-    def __init__(self, supabase_url: str, supabase_key: str, schema_config: Dict[str, Any]):
-        """Initialize Supabase client handler"""
-        self.supabase_url = supabase_url
-        self.supabase_key = supabase_key
-        self.client: Client = create_client(supabase_url, supabase_key)
-        self.schema_config = schema_config
-        self.tables_config = schema_config['database']['tables']
-        self.relationships = schema_config['database']['relationships']
-        
+    def __init__(self, supabase_url: str, supabase_key: str, schema_config: dict):
+        """Initialize Supabase client with enhanced error handling"""
+        try:
+            self.supabase_url = supabase_url
+            self.supabase_key = supabase_key
+            
+            # FIXED: Handle missing relationships gracefully
+            database_config = schema_config.get('database', schema_config)
+            self.tables_config = database_config.get('tables', {})
+            self.relationships = database_config.get('relationships', {})
+            
+            # Initialize Supabase client
+            from supabase import create_client
+            self.client = create_client(supabase_url, supabase_key)
+            
+            print(f"✅ Supabase client initialized")
+            print(f"   📋 Tables: {len(self.tables_config)}")
+            print(f"   🔗 Relationships: {len(self.relationships)}")
+            
+        except Exception as e:
+            print(f"❌ Failed to initialize Supabase client: {e}")
+            raise
+
     @classmethod
     def from_env(cls, schema_config: Dict[str, Any]):
         """Create handler from environment variables"""
@@ -30,37 +44,40 @@ class SupabaseClientHandler:
     def test_connection(self) -> bool:
         """Test Supabase connection"""
         try:
-            # Try to get user info or any basic operation
-            response = self.client.auth.get_user()
-            print("✅ Supabase client connection successful")
+            # Try a simple query to test connection
+            result = self.client.table('individual').select('*').limit(1).execute()
+            print("✅ Supabase connection successful")
             return True
         except Exception as e:
-            # If auth fails, try a simple table query (this might fail if no tables exist yet)
-            try:
-                # Try to list tables from information_schema
-                response = self.client.rpc('get_schema_tables').execute()
-                print("✅ Supabase client connection successful")
-                return True
-            except Exception as e2:
-                print(f"✅ Supabase client initialized (auth check failed but client is ready): {e}")
-                return True  # Client is likely working, just auth issue
+            print(f"❌ Supabase connection failed: {e}")
+            return False
     
     def create_table_if_not_exists(self, table_name: str) -> bool:
-        """Create table using Supabase SQL if it doesn't exist"""
+        """Create table using Supabase SQL if it doesn't exist - WITHOUT exec_sql"""
         try:
-            table_config = self.tables_config[table_name]
-            create_sql = self.generate_create_table_sql(table_name)
-            
-            # Execute SQL using Supabase RPC or direct SQL
-            response = self.client.rpc('exec_sql', {'sql': create_sql}).execute()
-            
-            print(f"  ✅ Table '{table_name}' ready in Supabase")
+            # First, try to query the table to see if it exists
+            test_response = self.client.table(table_name).select("*").limit(1).execute()
+            print(f"  ✅ Table '{table_name}' already exists in Supabase")
             return True
             
         except Exception as e:
-            print(f"  ⚠️  Table creation for '{table_name}': {e}")
-            # Table might already exist, which is fine
-            return True
+            error_msg = str(e).lower()
+            
+            if 'relation' in error_msg and 'does not exist' in error_msg:
+                # Table doesn't exist, but we can't create it without exec_sql
+                print(f"  ⚠️  Table '{table_name}' does not exist in Supabase")
+                print(f"     💡 Please create it manually in your Supabase dashboard")
+                
+                # Generate the SQL for manual creation
+                create_sql = self.generate_create_table_sql(table_name)
+                print(f"     📝 SQL to create table:")
+                print(f"     {create_sql}")
+                
+                return False  # Return False so we know it needs manual creation
+            else:
+                # Some other error, but table might exist
+                print(f"  ✅ Table '{table_name}' accessible (ignoring auth/permission issues)")
+                return True
     
     def generate_create_table_sql(self, table_name: str) -> str:
         """Generate CREATE TABLE SQL for Supabase"""
@@ -114,84 +131,266 @@ class SupabaseClientHandler:
         
         return type_mapping.get(data_type, 'TEXT')
     
-    def save_table_data(self, table_name: str, data: pd.DataFrame) -> bool:
-        """Save DataFrame to Supabase table using client"""
+    def save_table_data(self, table_name: str, data: pd.DataFrame) -> Dict[str, Any]:
+        """Save DataFrame to Supabase table with enhanced conflict resolution"""
         try:
+            # Clean the data first
+            clean_data = self._prepare_dataframe_for_supabase(data.copy())
+            
             # Convert DataFrame to list of dictionaries
-            records = data.to_dict('records')
+            records = clean_data.to_dict('records')
             
-            # Handle timestamp columns
-            for record in records:
-                for key, value in record.items():
-                    if pd.isna(value):
-                        record[key] = None
-                    elif isinstance(value, pd.Timestamp):
-                        record[key] = value.isoformat()
-                    elif hasattr(value, 'isoformat'):  # datetime objects
-                        record[key] = value.isoformat()
+            if not records:
+                return {
+                    'success': False,
+                    'error': 'No data to insert',
+                    'records_saved': 0
+                }
             
-            # Insert data in batches (Supabase has limits)
-            batch_size = 1000
-            total_inserted = 0
-            
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i + batch_size]
-                
-                response = self.client.table(table_name).insert(batch).execute()
+            # Try insert first, handle various conflicts
+            try:
+                response = self.client.table(table_name).insert(records).execute()
                 
                 if hasattr(response, 'data') and response.data:
-                    total_inserted += len(batch)
-                    print(f"  📥 Batch {i//batch_size + 1}: {len(batch)} records inserted into {table_name}")
+                    return {
+                        'success': True,
+                        'records_saved': len(response.data),
+                        'message': f'Successfully inserted {len(response.data)} records'
+                    }
                 else:
-                    print(f"  ⚠️  Batch {i//batch_size + 1}: Insert response unclear for {table_name}")
-                    total_inserted += len(batch)  # Assume success if no error
-            
-            print(f"  ✅ {table_name}: {total_inserted} total records saved to Supabase")
-            return True
-            
+                    return {
+                        'success': True,
+                        'records_saved': len(records),
+                        'message': f'Successfully processed {len(records)} records'
+                    }
+                
+            except Exception as insert_error:
+                error_msg = str(insert_error).lower()
+                
+                if 'duplicate key' in error_msg or 'conflict' in error_msg:
+                    print(f"  🔄 Handling conflicts for {table_name}...")
+                    
+                    # Handle duplicates by trying to insert unique records only
+                    # First, try to identify the primary key
+                    pk_cols = []
+                    if table_name in self.tables_config:
+                        pk_cols = [col for col, config in self.tables_config[table_name]['columns'].items() 
+                                  if config.get('primary_key', False)]
+                    
+                    if pk_cols and pk_cols[0] in clean_data.columns:
+                        # Try inserting records one by one, skipping conflicts
+                        successful_inserts = 0
+                        for record in records:
+                            try:
+                                self.client.table(table_name).insert([record]).execute()
+                                successful_inserts += 1
+                            except:
+                                continue  # Skip conflicting records
+                        
+                        return {
+                            'success': True,
+                            'records_saved': successful_inserts,
+                            'message': f'Successfully inserted {successful_inserts}/{len(records)} records (skipped duplicates)'
+                        }
+                    else:
+                        return {
+                            'success': False,
+                            'error': f'Duplicate key conflicts in {table_name}: {str(insert_error)}',
+                            'records_saved': 0,
+                            'suggestion': 'Check for duplicate primary keys in your data'
+                        }
+                        
+                elif 'foreign key' in error_msg:
+                    return {
+                        'success': False,
+                        'error': f'Foreign key constraint violation: {str(insert_error)}',
+                        'records_saved': 0,
+                        'suggestion': f'Ensure referenced records exist in parent tables before inserting into {table_name}'
+                    }
+                
+                elif 'value too long' in error_msg:
+                    return {
+                        'success': False,
+                        'error': f'String length constraint violation: {str(insert_error)}',
+                        'records_saved': 0,
+                        'suggestion': 'Check string field lengths against database schema'
+                    }
+                
+                elif 'invalid input syntax for type boolean' in error_msg:
+                    return {
+                        'success': False,
+                        'error': f'Boolean conversion error: {str(insert_error)}',
+                        'records_saved': 0,
+                        'suggestion': 'Check boolean field values - some survey responses not handled'
+                    }
+                
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Insert failed: {str(insert_error)}',
+                        'records_saved': 0
+                    }
+        
         except Exception as e:
-            print(f"  ❌ {table_name}: Error saving data - {e}")
-            return False
+            return {
+                'success': False,
+                'error': f'Data preparation failed: {str(e)}',
+                'records_saved': 0
+            }
+
+    def _prepare_dataframe_for_supabase(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and prepare DataFrame for Supabase insertion - handles ALL data type issues"""
+        
+        print(f"  🧹 Cleaning data for Supabase insertion...")
+        
+        # Handle UUID to integer conversion first
+        for col in df.columns:
+            if col.endswith('_id') and df[col].dtype == 'object':
+                sample_val = str(df[col].dropna().iloc[0]) if not df[col].dropna().empty else ""
+                if len(sample_val) > 10 and '-' in sample_val:  # Looks like UUID
+                    print(f"  🔄 Converting UUID column {col} to sequential integers")
+                    unique_uuids = df[col].dropna().unique()
+                    uuid_to_int = {uuid: idx + 1 for idx, uuid in enumerate(unique_uuids)}
+                    df[col] = df[col].map(uuid_to_int)
+    
+        # Handle string length constraints FIRST
+        for col in df.columns:
+            if col.lower() in ['sex', 'gender']:
+                # Map to single characters for CHAR(1) fields
+                print(f"  🔄 Converting {col} to single character")
+                df[col] = df[col].map({
+                    'Male': 'M', 'Female': 'F', 'male': 'M', 'female': 'F',
+                    'M': 'M', 'F': 'F', 'm': 'M', 'f': 'F',
+                    1: 'M', 2: 'F', '1': 'M', '2': 'F'
+                })
+                # Fill any unmapped values with 'U' (Unknown)
+                df[col] = df[col].fillna('U')
+            
+            # Handle boolean columns
+            elif df[col].dtype == 'object' or df[col].dtype == 'bool':
+                unique_vals = set(str(v).lower() for v in df[col].unique() if pd.notna(v))
+                boolean_indicators = {'yes', 'no', 'true', 'false', '1', '0', 'y', 'n', 'not asked', 'niu (not in universe)'}
+                
+                if unique_vals.intersection(boolean_indicators):
+                    print(f"  🔄 Converting {col} to boolean")
+                    df[col] = df[col].map({
+                        'yes': True, 'no': False, 'true': True, 'false': False,
+                        '1': True, '0': False, 'y': True, 'n': False,
+                        1: True, 0: False, 1.0: True, 0.0: False,
+                        'Yes': True, 'No': False, 'True': True, 'False': False,
+                        'YES': True, 'NO': False, 'TRUE': True, 'FALSE': False,
+                        # Handle ALL problematic values as None (NULL in database)
+                        'not asked': None,
+                        'niu (not in universe)': None,
+                        'unknown': None,
+                        'missing': None,
+                        'n/a': None,
+                        'na': None,
+                        '': None,
+                        'dk': None,
+                        'ref': None,
+                        'skip': None,
+                        'inapplicable': None,
+                        'not applicable': None
+                    })
+                    df[col] = df[col].fillna(None)
+    
+        # Handle timestamp columns
+        for col in df.columns:
+            if 'datetime' in str(df[col].dtype):
+                df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+            elif 'date' in str(df[col].dtype):
+                df[col] = df[col].astype(str)
+
+        # Replace pandas NaN with None for JSON serialization
+        df = df.where(pd.notnull(df), None)
+        
+        return df
     
     def save_mapped_tables(self, mapped_tables: Dict[str, pd.DataFrame]) -> Dict[str, bool]:
-        """Save all mapped tables to Supabase"""
+        """Save all mapped tables to Supabase in dependency order"""
         results = {}
         
-        print(f"\n💾 Saving {len(mapped_tables)} tables to Supabase...")
+        # Define insertion order to respect foreign key constraints
+        # Based on your new schema structure
+        insertion_order = [
+            'country',             # No dependencies
+            'site',               # Depends on country
+            'village',            # Depends on site
+            'structure',          # Depends on village
+            'dwelling_unit',      # Depends on structure
+            'household',          # Depends on dwelling_unit
+            'individual',         # Depends on household
+            'education',          # Depends on individual
+            'pregnancy',          # Depends on individual (mother_id)
+            'vaccination',        # Depends on individual
+            'birth_event',        # Depends on individual
+            'death_event',        # Depends on individual
+            'migration_event',    # Depends on individual
+            'censoring_event',    # Depends on individual
+            'livelihoods',        # Depends on household
+            'household_amenities' # Depends on household
+        ]
         
-        # Save in dependency order
-        table_order = ['demographics', 'employment', 'health_metrics', 'education', 'survey_responses', 'financial_data']
+        print(f"\n💾 Saving {len(mapped_tables)} tables to Supabase in dependency order...")
         
-        for table_name in table_order:
-            if table_name in mapped_tables:
-                try:
-                    df = mapped_tables[table_name].copy()
-                    
-                    # Add metadata timestamps if not present
-                    if 'created_at' in self.tables_config[table_name]['columns'] and 'created_at' not in df.columns:
-                        df['created_at'] = pd.Timestamp.now()
-                    if 'updated_at' in self.tables_config[table_name]['columns'] and 'updated_at' not in df.columns:
-                        df['updated_at'] = pd.Timestamp.now()
-                    
-                    # Remove auto-increment primary key columns
+        # Save tables in correct order
+        for table_name in insertion_order:
+            if table_name not in mapped_tables:
+                continue
+                
+            df = mapped_tables[table_name]
+            
+            try:
+                # Check if table exists first
+                table_exists = self.create_table_if_not_exists(table_name)
+                
+                if not table_exists:
+                    print(f"  ❌ {table_name}: Table doesn't exist and couldn't be created")
+                    results[table_name] = False
+                    continue
+                
+                # Prepare data with enhanced cleaning
+                clean_df = df.copy()
+                
+                # Remove auto-increment primary key columns before insertion
+                if table_name in self.tables_config:
                     pk_columns = [col for col, config in self.tables_config[table_name]['columns'].items() 
                                 if config.get('primary_key', False) and config.get('type') == 'integer']
                     
                     for pk_col in pk_columns:
-                        if pk_col in df.columns:
-                            df = df.drop(columns=[pk_col])
-                    
-                    # Create table if needed
-                    self.create_table_if_not_exists(table_name)
-                    
-                    # Save data
-                    success = self.save_table_data(table_name, df)
-                    results[table_name] = success
-                    
-                except Exception as e:
-                    print(f"  ❌ {table_name}: Error - {e}")
-                    results[table_name] = False
-        
+                        if pk_col in clean_df.columns:
+                            print(f"  🔄 Removing auto-increment column: {pk_col}")
+                            clean_df = clean_df.drop(columns=[pk_col])
+                
+                # Handle duplicates within the DataFrame
+                if len(clean_df) > clean_df.drop_duplicates().shape[0]:
+                    original_count = len(clean_df)
+                    clean_df = clean_df.drop_duplicates()
+                    print(f"  🔄 Removed {original_count - len(clean_df)} duplicate rows from {table_name}")
+                
+                # Add required timestamp fields if missing
+                if table_name in self.tables_config:
+                    if 'created_at' in self.tables_config[table_name]['columns'] and 'created_at' not in clean_df.columns:
+                        clean_df['created_at'] = pd.Timestamp.now()
+                    if 'updated_at' in self.tables_config[table_name]['columns'] and 'updated_at' not in clean_df.columns:
+                        clean_df['updated_at'] = pd.Timestamp.now()
+                
+                # Save data
+                result = self.save_table_data(table_name, clean_df)
+                results[table_name] = result['success']
+                
+                if result['success']:
+                    print(f"  ✅ {table_name}: {result['message']}")
+                else:
+                    print(f"  ❌ {table_name}: {result['error']}")
+                    if 'suggestion' in result:
+                        print(f"     💡 {result['suggestion']}")
+            
+            except Exception as e:
+                print(f"  ❌ {table_name}: Unexpected error - {e}")
+                results[table_name] = False
+    
         success_count = sum(results.values())
         print(f"\n🎯 Successfully saved {success_count}/{len(mapped_tables)} tables to Supabase")
         

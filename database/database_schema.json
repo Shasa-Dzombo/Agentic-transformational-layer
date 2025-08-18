@@ -2,8 +2,8 @@
   "database": {
     "name": "aphrc_hdss_db",
     "version": "1.0.0",
-    "last_updated": "2025-08-05",
-    "description": "HDSS database schema for demographic, health, and research tracking at APHRC",
+    "last_updated": "2025-08-14",
+    "description": "HDSS database schema for Education, Amenities, and Livelihood modules at APHRC",
     "tables": {
       "birth_event": {
         "description": "Birth event data including location and attendant information",
@@ -59,194 +59,6 @@
           }
         }
       },
-      "censoring_event": {
-        "description": "Tracking of censoring events like death, migration, or study end",
-        "columns": {
-          "censoring_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for censoring id",
-            "primary_key": true
-          },
-          "individual_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to individual",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "event_type": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "Event type"
-          },
-          "event_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of event"
-          },
-          "comments": {
-            "type": "text",
-            "nullable": true,
-            "description": "Comments"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "censoring_event_individual_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "country": {
-        "description": "",
-        "columns": {
-          "country_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for country id",
-            "primary_key": true
-          },
-          "name": {
-            "type": "character varying NOT NULL UNIQUE",
-            "nullable": false,
-            "description": "Name"
-          },
-          "code": {
-            "type": "character varying NOT NULL UNIQUE",
-            "nullable": false,
-            "description": "Code"
-          },
-          "status": {
-            "type": "boolean DEFAULT true",
-            "nullable": true,
-            "description": "Status"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "country_pkey PRIMARY KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "data_dictionary": {
-        "description": "",
-        "columns": {
-          "id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Id",
-            "primary_key": true
-          },
-          "name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Name"
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "type": {
-            "type": "character varying CHECK",
-            "nullable": true,
-            "description": "Type"
-          },
-          "format": {
-            "type": "character varying CHECK",
-            "nullable": true,
-            "description": "Format"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "data_dictionary_pkey PRIMARY KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "dataset_export_log": {
-        "description": "",
-        "columns": {
-          "export_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for export id",
-            "primary_key": true
-          },
-          "dataset_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for dataset id",
-            "foreign_key": {
-              "references": "research_dataset.dataset_id"
-            }
-          },
-          "exported_by": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Exported by",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "export_timestamp": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Export timestamp"
-          },
-          "file_format": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "File format"
-          },
-          "reason": {
-            "type": "text",
-            "nullable": true,
-            "description": "Reason"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "dataset_export_log_exported_by_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
       "death_event": {
         "description": "Death events including cause and autopsy status",
         "columns": {
@@ -296,57 +108,13 @@
           }
         }
       },
-      "dwelling_unit": {
-        "description": "Dwelling units within structures and their codes",
+       "migration_event": {
+        "description": "Migration data capturing movement in, out, or within the site",
         "columns": {
-          "dwelling_unit_id": {
+          "migration_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for dwelling unit id",
-            "primary_key": true
-          },
-          "structure_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for structure id",
-            "foreign_key": {
-              "references": "structure.structure_id"
-            }
-          },
-          "unit_code": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Unit code"
-          },
-          "unit_name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Unit name"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "dwelling_unit_structure_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "education": {
-        "description": "Educational background and enrollment status of individuals",
-        "columns": {
-          "education_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for education id",
+            "description": "Identifier for migration id",
             "primary_key": true
           },
           "individual_id": {
@@ -357,207 +125,30 @@
               "references": "individual.individual_id"
             }
           },
-          "school_level": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "School level"
-          },
-          "currently_enrolled": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Currently enrolled"
-          },
-          "transition_status": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Transition status"
-          },
-          "has_ever_attended_school": {
-            "type": "boolean",
-            "nullable": true,
-            "description": "Has ever attended school"
-          },
-          "highest_level_ever_attended": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Highest level ever attended"
-          },
-          "highest_class_completed": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Highest class completed"
-          },
-          "current_school_type": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Current school type"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "education_individual_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "form": {
-        "description": "Forms used for data collection",
-        "columns": {
-          "form_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for form id",
-            "primary_key": true
-          },
-          "name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Name"
-          },
-          "category": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Category"
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "active": {
-            "type": "boolean DEFAULT true",
-            "nullable": true,
-            "description": "Active"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "form_pkey PRIMARY KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "form_field": {
-        "description": "Fields or questions within data collection forms",
-        "columns": {
-          "field_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for field id",
-            "primary_key": true
-          },
-          "section_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for section id",
-            "foreign_key": {
-              "references": "form_section.section_id"
-            }
-          },
-          "label": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Label"
-          },
-          "field_name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Field name"
-          },
-          "data_type": {
+          "migration_type": {
             "type": "character varying NOT NULL CHECK",
             "nullable": false,
-            "description": "Data type"
+            "description": "Migration type"
           },
-          "reference_table": {
+          "from_location": {
             "type": "character varying",
             "nullable": true,
-            "description": "Reference table"
+            "description": "From location"
           },
-          "required": {
-            "type": "boolean DEFAULT false",
+          "to_location": {
+            "type": "character varying",
             "nullable": true,
-            "description": "Required"
+            "description": "To location"
           },
-          "field_order": {
-            "type": "integer NOT NULL",
+          "migration_date": {
+            "type": "date NOT NULL",
             "nullable": false,
-            "description": "Field order"
+            "description": "Date of migration"
           },
-          "options": {
-            "type": "jsonb",
-            "nullable": true,
-            "description": "Options"
-          },
-          "validation_rules": {
-            "type": "jsonb",
-            "nullable": true,
-            "description": "Validation rules"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "form_field_section_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "form_field_response": {
-        "description": "Specific answers to form fields",
-        "columns": {
-          "field_response_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for field response id",
-            "primary_key": true
-          },
-          "response_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for response id",
-            "foreign_key": {
-              "references": "form_response.response_id"
-            }
-          },
-          "field_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for field id",
-            "foreign_key": {
-              "references": "form_field.field_id"
-            }
-          },
-          "value": {
+          "reason": {
             "type": "text",
             "nullable": true,
-            "description": "Value"
+            "description": "Reason"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -570,70 +161,48 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "form_field_response_field_id_fkey FOREIGN KEY",
+            "type": "migration_event_individual_id_fkey FOREIGN KEY",
             "nullable": true,
             "description": "Constraint"
           }
         }
       },
-      "form_response": {
-        "description": "Responses submitted through forms",
+      "vaccination": {
+        "description": "Vaccination records per individual including vaccine type and dose",
         "columns": {
-          "response_id": {
+          "vaccination_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for response id",
+            "description": "Identifier for vaccination id",
             "primary_key": true
           },
-          "form_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for form id",
-            "foreign_key": {
-              "references": "form.form_id"
-            }
-          },
-          "submitted_by": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Submitted by",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "submission_date": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Date of submission"
-          },
-          "round_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for round id",
-            "foreign_key": {
-              "references": "survey_round.round_id"
-            }
-          },
           "individual_id": {
-            "type": "integer",
-            "nullable": true,
+            "type": "integer NOT NULL",
+            "nullable": false,
             "description": "Reference to individual",
             "foreign_key": {
               "references": "individual.individual_id"
             }
           },
-          "household_id": {
+          "vaccine_type": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Vaccine type"
+          },
+          "dose_number": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Dose number"
+          },
+          "administration_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of administration"
+          },
+          "age_at_vaccination_months": {
             "type": "integer",
             "nullable": true,
-            "description": "Reference to household",
-            "foreign_key": {
-              "references": "household.household_id"
-            }
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
+            "description": "Age at vaccination months"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -646,149 +215,73 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "form_response_household_id_fkey FOREIGN KEY",
+            "type": "vaccination_individual_id_fkey FOREIGN KEY",
             "nullable": true,
             "description": "Constraint"
           }
         }
       },
-      "form_section": {
-        "description": "",
+            "pregnancy": {
+        "description": "Pregnancy records for female individuals including outcome and delivery info",
         "columns": {
-          "section_id": {
+          "pregnancy_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for section id",
+            "description": "Identifier for pregnancy id",
             "primary_key": true
           },
-          "form_id": {
+          "mother_id": {
             "type": "integer NOT NULL",
             "nullable": false,
-            "description": "Identifier for form id",
-            "foreign_key": {
-              "references": "form.form_id"
-            }
-          },
-          "title": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Title"
-          },
-          "order_number": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Order number"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "form_section_form_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "household": {
-        "description": "Household information including household code and head",
-        "columns": {
-          "household_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Reference to household",
-            "primary_key": true
-          },
-          "dwelling_unit_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for dwelling unit id",
-            "foreign_key": {
-              "references": "dwelling_unit.dwelling_unit_id"
-            }
-          },
-          "household_code": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Household code"
-          },
-          "head_individual_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for head individual id",
+            "description": "Identifier for mother id",
             "foreign_key": {
               "references": "individual.individual_id"
             }
           },
-          "start_date": {
-            "type": "date NOT NULL",
+          "outcome": {
+            "type": "character varying NOT NULL CHECK",
             "nullable": false,
-            "description": "Date of start"
+            "description": "Outcome"
           },
-          "end_date": {
+          "delivery_date": {
             "type": "date",
             "nullable": true,
-            "description": "Date of end"
+            "description": "Date of delivery"
           },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
+          "birth_weight": {
+            "type": "numeric",
             "nullable": true,
-            "description": "Record created at timestamp"
+            "description": "Birth weight"
           },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "fk_household_head_individual FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "household_amenities": {
-        "description": "",
-        "columns": {
-          "amenity_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for amenity id",
-            "primary_key": true
-          },
-          "household_id": {
-            "type": "integer NOT NULL UNIQUE",
-            "nullable": false,
-            "description": "Reference to household",
-            "foreign_key": {
-              "references": "household.household_id"
-            }
-          },
-          "water_source": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Water source"
-          },
-          "toilet_type": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Toilet type"
-          },
-          "electricity": {
+          "multiple_birth": {
             "type": "boolean DEFAULT false",
             "nullable": true,
-            "description": "Electricity"
+            "description": "Multiple birth"
           },
-          "waste_disposal": {
-            "type": "character varying",
+          "preterm": {
+            "type": "boolean DEFAULT false",
             "nullable": true,
-            "description": "Waste disposal"
+            "description": "Preterm"
+          },
+          "full_term": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Full term"
+          },
+          "neonatal_death": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Neonatal death"
+          },
+          "maternal_complication": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Maternal complication"
+          },
+          "c_section_type": {
+            "type": "character varying CHECK",
+            "nullable": true,
+            "description": "C section type"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -801,19 +294,19 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "household_amenities_household_id_fkey FOREIGN KEY",
+            "type": "pregnancy_mother_id_fkey FOREIGN KEY",
             "nullable": true,
             "description": "Constraint"
           }
         }
       },
-      "household_relationship": {
-        "description": "",
+      "censoring_event": {
+        "description": "Tracking of censoring events like death, migration, or study end",
         "columns": {
-          "relationship_id": {
+          "censoring_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for relationship id",
+            "description": "Identifier for censoring id",
             "primary_key": true
           },
           "individual_id": {
@@ -824,28 +317,20 @@
               "references": "individual.individual_id"
             }
           },
-          "household_id": {
-            "type": "integer NOT NULL",
+          "event_type": {
+            "type": "character varying NOT NULL CHECK",
             "nullable": false,
-            "description": "Reference to household",
-            "foreign_key": {
-              "references": "household.household_id"
-            }
+            "description": "Event type"
           },
-          "relationship_to_head": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Relationship to head"
-          },
-          "start_date": {
+          "event_date": {
             "type": "date NOT NULL",
             "nullable": false,
-            "description": "Date of start"
+            "description": "Date of event"
           },
-          "end_date": {
-            "type": "date",
+          "comments": {
+            "type": "text",
             "nullable": true,
-            "description": "Date of end"
+            "description": "Comments"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -858,13 +343,13 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "household_relationship_household_id_fkey FOREIGN KEY",
+            "type": "censoring_event_individual_id_fkey FOREIGN KEY",
             "nullable": true,
             "description": "Constraint"
           }
         }
       },
-      "individual": {
+            "individual": {
         "description": "Core demographic record for each individual in the HDSS population",
         "columns": {
           "individual_id": {
@@ -953,6 +438,186 @@
           }
         }
       },
+      "education": {
+        "description": "Educational background and enrollment status of individuals",
+        "columns": {
+          "education_id": {
+            "type": "integer NOT NULL DEFAULT nextval",
+            "nullable": false,
+            "description": "Identifier for education id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "school_level": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "School level"
+          },
+          "currently_enrolled": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Currently enrolled"
+          },
+          "transition_status": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Transition status"
+          },
+          "has_ever_attended_school": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Has ever attended school"
+          },
+          "highest_level_ever_attended": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Highest level ever attended"
+          },
+          "highest_class_completed": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Highest class completed"
+          },
+          "current_school_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Current school type"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "education_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "household": {
+        "description": "Household information including household code and head",
+        "columns": {
+          "household_id": {
+            "type": "integer NOT NULL DEFAULT nextval",
+            "nullable": false,
+            "description": "Reference to household",
+            "primary_key": true
+          },
+          "dwelling_unit_id": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Identifier for dwelling unit id",
+            "foreign_key": {
+              "references": "dwelling_unit.dwelling_unit_id"
+            }
+          },
+          "household_code": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Household code"
+          },
+          "head_individual_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Identifier for head individual id",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "start_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of start"
+          },
+          "end_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of end"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "fk_household_head_individual FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "household_amenities": {
+        "description": "Household-level data on water, sanitation, electricity, and waste disposal",
+        "columns": {
+          "amenity_id": {
+            "type": "integer NOT NULL DEFAULT nextval",
+            "nullable": false,
+            "description": "Identifier for amenity id",
+            "primary_key": true
+          },
+          "household_id": {
+            "type": "integer NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Reference to household",
+            "foreign_key": {
+              "references": "household.household_id"
+            }
+          },
+          "water_source": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Water source"
+          },
+          "toilet_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Toilet type"
+          },
+          "electricity": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Electricity availability"
+          },
+          "waste_disposal": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Waste disposal method"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "household_amenities_household_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
       "livelihoods": {
         "description": "Information on income sources, shocks, and household income/expenditure",
         "columns": {
@@ -983,7 +648,7 @@
           "expenditure": {
             "type": "numeric",
             "nullable": true,
-            "description": "Expenditure"
+            "description": "Monthly expenditure"
           },
           "shocks_experienced": {
             "type": "text",
@@ -998,22 +663,22 @@
           "reason_no_iga": {
             "type": "character varying",
             "nullable": true,
-            "description": "Reason no iga"
+            "description": "Reason for no income generating activity"
           },
           "type_of_iga": {
             "type": "character varying",
             "nullable": true,
-            "description": "Type of iga"
+            "description": "Type of income generating activity"
           },
           "income_30days_cash": {
             "type": "numeric",
             "nullable": true,
-            "description": "Income 30days cash"
+            "description": "Cash income in last 30 days"
           },
           "income_30days_kind": {
             "type": "numeric",
             "nullable": true,
-            "description": "Income 30days kind"
+            "description": "In-kind income in last 30 days"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -1032,593 +697,29 @@
           }
         }
       },
-      "migration_event": {
-        "description": "Migration data capturing movement in, out, or within the site",
+      "country": {
+        "description": "",
         "columns": {
-          "migration_id": {
+          "country_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for migration id",
+            "description": "Identifier for country id",
             "primary_key": true
-          },
-          "individual_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to individual",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "migration_type": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "Migration type"
-          },
-          "from_location": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "From location"
-          },
-          "to_location": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "To location"
-          },
-          "migration_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of migration"
-          },
-          "reason": {
-            "type": "text",
-            "nullable": true,
-            "description": "Reason"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "migration_event_individual_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "pregnancy": {
-        "description": "Pregnancy records for female individuals including outcome and delivery info",
-        "columns": {
-          "pregnancy_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for pregnancy id",
-            "primary_key": true
-          },
-          "mother_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for mother id",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "outcome": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "Outcome"
-          },
-          "delivery_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of delivery"
-          },
-          "birth_weight": {
-            "type": "numeric",
-            "nullable": true,
-            "description": "Birth weight"
-          },
-          "multiple_birth": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Multiple birth"
-          },
-          "preterm": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Preterm"
-          },
-          "full_term": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Full term"
-          },
-          "neonatal_death": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Neonatal death"
-          },
-          "maternal_complication": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Maternal complication"
-          },
-          "c_section_type": {
-            "type": "character varying CHECK",
-            "nullable": true,
-            "description": "C section type"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "pregnancy_mother_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "publication": {
-        "description": "Published outputs from research projects",
-        "columns": {
-          "publication_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for publication id",
-            "primary_key": true
-          },
-          "research_project_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for research project id",
-            "foreign_key": {
-              "references": "research_project.research_project_id"
-            }
-          },
-          "title": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Title"
-          },
-          "authors": {
-            "type": "text NOT NULL",
-            "nullable": false,
-            "description": "Authors"
-          },
-          "journal": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Journal"
-          },
-          "doi_or_link": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Doi or link"
-          },
-          "publication_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of publication"
-          },
-          "type": {
-            "type": "character varying CHECK",
-            "nullable": true,
-            "description": "Type"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "publication_research_project_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "research_dataset": {
-        "description": "Datasets linked to research projects",
-        "columns": {
-          "dataset_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for dataset id",
-            "primary_key": true
-          },
-          "research_project_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for research project id",
-            "foreign_key": {
-              "references": "research_project.research_project_id"
-            }
           },
           "name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Name"
-          },
-          "creation_date": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Date of creation"
-          },
-          "created_by": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Created by",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "data_scope": {
-            "type": "text",
-            "nullable": true,
-            "description": "Data scope"
-          },
-          "access_level": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Access level"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "research_dataset_created_by_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "research_project": {
-        "description": "Research projects associated with datasets and variables",
-        "columns": {
-          "research_project_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for research project id",
-            "primary_key": true
-          },
-          "study_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to study",
-            "foreign_key": {
-              "references": "study.study_id"
-            }
-          },
-          "title": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Title"
-          },
-          "lead_researcher_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for lead researcher id",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "start_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of start"
-          },
-          "end_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of end"
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "ethics_approval_number": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Ethics approval number"
-          },
-          "publication_reference": {
-            "type": "text",
-            "nullable": true,
-            "description": "Publication reference"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "research_project_lead_researcher_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "research_question": {
-        "description": "",
-        "columns": {
-          "question_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for question id",
-            "primary_key": true
-          },
-          "research_project_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for research project id",
-            "foreign_key": {
-              "references": "research_project.research_project_id"
-            }
-          },
-          "text": {
-            "type": "text NOT NULL",
-            "nullable": false,
-            "description": "Text"
-          },
-          "priority_level": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Priority level"
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "research_question_research_project_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "research_question_variable": {
-        "description": "",
-        "columns": {
-          "id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Id",
-            "primary_key": true
-          },
-          "question_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for question id",
-            "foreign_key": {
-              "references": "research_question.question_id"
-            }
-          },
-          "variable_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for variable id",
-            "foreign_key": {
-              "references": "research_variable.variable_id"
-            }
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "research_question_variable_variable_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "research_variable": {
-        "description": "Variables defined for research analysis",
-        "columns": {
-          "variable_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for variable id",
-            "primary_key": true
-          },
-          "research_project_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for research project id",
-            "foreign_key": {
-              "references": "research_project.research_project_id"
-            }
-          },
-          "name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Name"
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "source_form_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for source form id",
-            "foreign_key": {
-              "references": "form.form_id"
-            }
-          },
-          "source_field_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for source field id",
-            "foreign_key": {
-              "references": "form_field.field_id"
-            }
-          },
-          "transformation_logic": {
-            "type": "text",
-            "nullable": true,
-            "description": "Transformation logic"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "research_variable_source_field_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "residency_episode": {
-        "description": "",
-        "columns": {
-          "episode_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for episode id",
-            "primary_key": true
-          },
-          "individual_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to individual",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "household_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to household",
-            "foreign_key": {
-              "references": "household.household_id"
-            }
-          },
-          "start_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of start"
-          },
-          "end_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of end"
-          },
-          "event_type": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "Event type"
-          },
-          "reason": {
-            "type": "text",
-            "nullable": true,
-            "description": "Reason"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "residency_episode_household_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "role": {
-        "description": "",
-        "columns": {
-          "role_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for role id",
-            "primary_key": true
-          },
-          "role_name": {
             "type": "character varying NOT NULL UNIQUE",
             "nullable": false,
-            "description": "Role name"
+            "description": "Name"
           },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
+          "code": {
+            "type": "character varying NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Code"
           },
-          "is_default": {
-            "type": "boolean DEFAULT false",
+          "status": {
+            "type": "boolean DEFAULT true",
             "nullable": true,
-            "description": "Is default"
-          },
-          "is_system": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Is system"
+            "description": "Status"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -1631,7 +732,7 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "role_pkey PRIMARY KEY",
+            "type": "country_pkey PRIMARY KEY",
             "nullable": true,
             "description": "Constraint"
           }
@@ -1711,43 +812,32 @@
           }
         }
       },
-      "site_user": {
-        "description": "",
+       "dwelling_unit": {
+        "description": "Dwelling units within structures and their codes",
         "columns": {
-          "site_user_id": {
+          "dwelling_unit_id": {
             "type": "integer NOT NULL DEFAULT nextval",
             "nullable": false,
-            "description": "Identifier for site user id",
+            "description": "Identifier for dwelling unit id",
             "primary_key": true
           },
-          "site_id": {
+          "structure_id": {
             "type": "integer NOT NULL",
             "nullable": false,
-            "description": "Reference to site",
+            "description": "Identifier for structure id",
             "foreign_key": {
-              "references": "site.site_id"
+              "references": "structure.structure_id"
             }
           },
-          "role_id": {
-            "type": "integer NOT NULL",
+          "unit_code": {
+            "type": "character varying NOT NULL",
             "nullable": false,
-            "description": "Identifier for role id",
-            "foreign_key": {
-              "references": "role.role_id"
-            }
+            "description": "Unit code"
           },
-          "user_profile_id": {
-            "type": "integer NOT NULL",
+          "unit_name": {
+            "type": "character varying NOT NULL",
             "nullable": false,
-            "description": "Identifier for user profile id",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
+            "description": "Unit name"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -1760,13 +850,52 @@
             "description": "Record updated at timestamp"
           },
           "CONSTRAINT": {
-            "type": "site_user_user_profile_id_fkey FOREIGN KEY",
+            "type": "dwelling_unit_structure_id_fkey FOREIGN KEY",
             "nullable": true,
             "description": "Constraint"
           }
         }
       },
-      "structure": {
+      "village": {
+        "description": "Village-level geographic units within study sites",
+        "columns": {
+          "village_id": {
+            "type": "integer NOT NULL DEFAULT nextval",
+            "nullable": false,
+            "description": "Identifier for village id",
+            "primary_key": true
+          },
+          "site_id": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Reference to site",
+            "foreign_key": {
+              "references": "site.site_id"
+            }
+          },
+          "name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Name"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "village_site_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+       "structure": {
         "description": "Structures in villages representing physical housing units",
         "columns": {
           "structure_id": {
@@ -1814,941 +943,89 @@
             "description": "Constraint"
           }
         }
-      },
-      "study": {
-        "description": "Research studies conducted within the HDSS",
-        "columns": {
-          "study_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Reference to study",
-            "primary_key": true
-          },
-          "title": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Title"
-          },
-          "principal_investigator": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Principal investigator",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "start_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of start"
-          },
-          "end_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of end"
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "objectives": {
-            "type": "text",
-            "nullable": true,
-            "description": "Objectives"
-          },
-          "ethics_approval_code": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Ethics approval code"
-          },
-          "funding_source": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Funding source"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "study_principal_investigator_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "study_form": {
-        "description": "",
-        "columns": {
-          "study_form_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for study form id",
-            "primary_key": true
-          },
-          "study_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to study",
-            "foreign_key": {
-              "references": "study.study_id"
-            }
-          },
-          "form_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for form id",
-            "foreign_key": {
-              "references": "form.form_id"
-            }
-          },
-          "purpose": {
-            "type": "text",
-            "nullable": true,
-            "description": "Purpose"
-          },
-          "required_round_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for required round id",
-            "foreign_key": {
-              "references": "survey_round.round_id"
-            }
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "study_form_required_round_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "study_participation": {
-        "description": "",
-        "columns": {
-          "participation_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for participation id",
-            "primary_key": true
-          },
-          "study_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to study",
-            "foreign_key": {
-              "references": "study.study_id"
-            }
-          },
-          "individual_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to individual",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "consent_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of consent"
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "study_participation_individual_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "survey_round": {
-        "description": "",
-        "columns": {
-          "round_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for round id",
-            "primary_key": true
-          },
-          "site_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to site",
-            "foreign_key": {
-              "references": "site.site_id"
-            }
-          },
-          "round_number": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Round number"
-          },
-          "start_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of start"
-          },
-          "end_date": {
-            "type": "date",
-            "nullable": true,
-            "description": "Date of end"
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "is_baseline": {
-            "type": "boolean DEFAULT false",
-            "nullable": true,
-            "description": "Is baseline"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "survey_round_site_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "user_account_request": {
-        "description": "",
-        "columns": {
-          "request_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for request id",
-            "primary_key": true
-          },
-          "email": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Email"
-          },
-          "full_name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Full name"
-          },
-          "phone_number": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Phone number"
-          },
-          "requested_role_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for requested role id",
-            "foreign_key": {
-              "references": "role.role_id"
-            }
-          },
-          "requested_site_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Identifier for requested site id",
-            "foreign_key": {
-              "references": "site.site_id"
-            }
-          },
-          "reason": {
-            "type": "text",
-            "nullable": true,
-            "description": "Reason"
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "reviewed_by": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Reviewed by",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "reviewed_at": {
-            "type": "timestamp with time zone",
-            "nullable": true,
-            "description": "Reviewed at"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "user_account_request_reviewed_by_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "user_activity_log": {
-        "description": "",
-        "columns": {
-          "activity_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for activity id",
-            "primary_key": true
-          },
-          "user_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to user",
-            "foreign_key": {
-              "references": "user_profile.user_id"
-            }
-          },
-          "action_type": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Action type"
-          },
-          "timestamp": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Timestamp"
-          },
-          "description": {
-            "type": "text",
-            "nullable": true,
-            "description": "Description"
-          },
-          "ip_address": {
-            "type": "inet",
-            "nullable": true,
-            "description": "Ip address"
-          },
-          "user_agent": {
-            "type": "text",
-            "nullable": true,
-            "description": "User agent"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "user_activity_log_user_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "user_profile": {
-        "description": "System user profiles and roles",
-        "columns": {
-          "user_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Reference to user",
-            "primary_key": true
-          },
-          "auth_user_id": {
-            "type": "uuid NOT NULL UNIQUE",
-            "nullable": false,
-            "description": "Identifier for auth user id"
-          },
-          "username": {
-            "type": "character varying UNIQUE",
-            "nullable": true,
-            "description": "Username"
-          },
-          "email": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Email"
-          },
-          "full_name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Full name"
-          },
-          "phone_number": {
-            "type": "character varying",
-            "nullable": true,
-            "description": "Phone number"
-          },
-          "role_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Identifier for role id",
-            "foreign_key": {
-              "references": "role.role_id"
-            }
-          },
-          "site_id": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Reference to site",
-            "foreign_key": {
-              "references": "site.site_id"
-            }
-          },
-          "status": {
-            "type": "character varying DEFAULT",
-            "nullable": true,
-            "description": "Status"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "user_profile_site_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "vaccination": {
-        "description": "Vaccination records per individual including vaccine type and dose",
-        "columns": {
-          "vaccination_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for vaccination id",
-            "primary_key": true
-          },
-          "individual_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to individual",
-            "foreign_key": {
-              "references": "individual.individual_id"
-            }
-          },
-          "vaccine_type": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Vaccine type"
-          },
-          "dose_number": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Dose number"
-          },
-          "administration_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of administration"
-          },
-          "age_at_vaccination_months": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Age at vaccination months"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "vaccination_individual_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
-      },
-      "village": {
-        "description": "Village-level geographic units within study sites",
-        "columns": {
-          "village_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
-            "nullable": false,
-            "description": "Identifier for village id",
-            "primary_key": true
-          },
-          "site_id": {
-            "type": "integer NOT NULL",
-            "nullable": false,
-            "description": "Reference to site",
-            "foreign_key": {
-              "references": "site.site_id"
-            }
-          },
-          "name": {
-            "type": "character varying NOT NULL",
-            "nullable": false,
-            "description": "Name"
-          },
-          "created_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record created at timestamp"
-          },
-          "updated_at": {
-            "type": "timestamp with time zone DEFAULT now",
-            "nullable": true,
-            "description": "Record updated at timestamp"
-          },
-          "CONSTRAINT": {
-            "type": "village_site_id_fkey FOREIGN KEY",
-            "nullable": true,
-            "description": "Constraint"
-          }
-        }
       }
     },
     "relationships": {
-      "birth_event_to_individual": {
-        "type": "many_to_one",
-        "from": "birth_event.mother_id",
-        "to": "individual.individual_id",
-        "description": "Many records in birth_event reference individual"
-      },
-      "censoring_event_to_individual": {
-        "type": "many_to_one",
-        "from": "censoring_event.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in censoring_event reference individual"
-      },
-      "dataset_export_log_to_research_dataset": {
-        "type": "many_to_one",
-        "from": "dataset_export_log.dataset_id",
-        "to": "research_dataset.dataset_id",
-        "description": "Many records in dataset_export_log reference research_dataset"
-      },
-      "dataset_export_log_to_user_profile": {
-        "type": "many_to_one",
-        "from": "dataset_export_log.exported_by",
-        "to": "user_profile.user_id",
-        "description": "Many records in dataset_export_log reference user_profile"
-      },
-      "death_event_to_individual": {
-        "type": "many_to_one",
-        "from": "death_event.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in death_event reference individual"
-      },
-      "dwelling_unit_to_structure": {
-        "type": "many_to_one",
-        "from": "dwelling_unit.structure_id",
-        "to": "structure.structure_id",
-        "description": "Many records in dwelling_unit reference structure"
-      },
-      "education_to_individual": {
-        "type": "many_to_one",
-        "from": "education.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in education reference individual"
-      },
-      "form_field_to_form_section": {
-        "type": "many_to_one",
-        "from": "form_field.section_id",
-        "to": "form_section.section_id",
-        "description": "Many records in form_field reference form_section"
-      },
-      "form_field_response_to_form_response": {
-        "type": "many_to_one",
-        "from": "form_field_response.response_id",
-        "to": "form_response.response_id",
-        "description": "Many records in form_field_response reference form_response"
-      },
-      "form_field_response_to_form_field": {
-        "type": "many_to_one",
-        "from": "form_field_response.field_id",
-        "to": "form_field.field_id",
-        "description": "Many records in form_field_response reference form_field"
-      },
-      "form_response_to_form": {
-        "type": "many_to_one",
-        "from": "form_response.form_id",
-        "to": "form.form_id",
-        "description": "Many records in form_response reference form"
-      },
-      "form_response_to_user_profile": {
-        "type": "many_to_one",
-        "from": "form_response.submitted_by",
-        "to": "user_profile.user_id",
-        "description": "Many records in form_response reference user_profile"
-      },
-      "form_response_to_survey_round": {
-        "type": "many_to_one",
-        "from": "form_response.round_id",
-        "to": "survey_round.round_id",
-        "description": "Many records in form_response reference survey_round"
-      },
-      "form_response_to_individual": {
-        "type": "many_to_one",
-        "from": "form_response.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in form_response reference individual"
-      },
-      "form_response_to_household": {
-        "type": "many_to_one",
-        "from": "form_response.household_id",
-        "to": "household.household_id",
-        "description": "Many records in form_response reference household"
-      },
-      "form_section_to_form": {
-        "type": "many_to_one",
-        "from": "form_section.form_id",
-        "to": "form.form_id",
-        "description": "Many records in form_section reference form"
-      },
-      "household_to_dwelling_unit": {
-        "type": "many_to_one",
-        "from": "household.dwelling_unit_id",
-        "to": "dwelling_unit.dwelling_unit_id",
-        "description": "Many records in household reference dwelling_unit"
-      },
-      "household_to_individual": {
-        "type": "many_to_one",
-        "from": "household.head_individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in household reference individual"
-      },
-      "household_amenities_to_household": {
-        "type": "many_to_one",
-        "from": "household_amenities.household_id",
-        "to": "household.household_id",
-        "description": "Many records in household_amenities reference household"
-      },
-      "household_relationship_to_individual": {
-        "type": "many_to_one",
-        "from": "household_relationship.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in household_relationship reference individual"
-      },
-      "household_relationship_to_household": {
-        "type": "many_to_one",
-        "from": "household_relationship.household_id",
-        "to": "household.household_id",
-        "description": "Many records in household_relationship reference household"
-      },
-      "individual_to_household": {
+      "individual_household": {
         "type": "many_to_one",
         "from": "individual.household_id",
-        "to": "household.household_id",
-        "description": "Many records in individual reference household"
+        "to": "household.household_id"
       },
-      "livelihoods_to_household": {
+      "household_dwelling": {
+        "type": "many_to_one", 
+        "from": "household.dwelling_unit_id",
+        "to": "dwelling_unit.dwelling_unit_id"
+      },
+      "dwelling_structure": {
         "type": "many_to_one",
-        "from": "livelihoods.household_id",
-        "to": "household.household_id",
-        "description": "Many records in livelihoods reference household"
+        "from": "dwelling_unit.structure_id", 
+        "to": "structure.structure_id"
       },
-      "migration_event_to_individual": {
-        "type": "many_to_one",
-        "from": "migration_event.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in migration_event reference individual"
-      },
-      "pregnancy_to_individual": {
-        "type": "many_to_one",
-        "from": "pregnancy.mother_id",
-        "to": "individual.individual_id",
-        "description": "Many records in pregnancy reference individual"
-      },
-      "publication_to_research_project": {
-        "type": "many_to_one",
-        "from": "publication.research_project_id",
-        "to": "research_project.research_project_id",
-        "description": "Many records in publication reference research_project"
-      },
-      "research_dataset_to_research_project": {
-        "type": "many_to_one",
-        "from": "research_dataset.research_project_id",
-        "to": "research_project.research_project_id",
-        "description": "Many records in research_dataset reference research_project"
-      },
-      "research_dataset_to_user_profile": {
-        "type": "many_to_one",
-        "from": "research_dataset.created_by",
-        "to": "user_profile.user_id",
-        "description": "Many records in research_dataset reference user_profile"
-      },
-      "research_project_to_study": {
-        "type": "many_to_one",
-        "from": "research_project.study_id",
-        "to": "study.study_id",
-        "description": "Many records in research_project reference study"
-      },
-      "research_project_to_user_profile": {
-        "type": "many_to_one",
-        "from": "research_project.lead_researcher_id",
-        "to": "user_profile.user_id",
-        "description": "Many records in research_project reference user_profile"
-      },
-      "research_question_to_research_project": {
-        "type": "many_to_one",
-        "from": "research_question.research_project_id",
-        "to": "research_project.research_project_id",
-        "description": "Many records in research_question reference research_project"
-      },
-      "research_question_variable_to_research_question": {
-        "type": "many_to_one",
-        "from": "research_question_variable.question_id",
-        "to": "research_question.question_id",
-        "description": "Many records in research_question_variable reference research_question"
-      },
-      "research_question_variable_to_research_variable": {
-        "type": "many_to_one",
-        "from": "research_question_variable.variable_id",
-        "to": "research_variable.variable_id",
-        "description": "Many records in research_question_variable reference research_variable"
-      },
-      "research_variable_to_research_project": {
-        "type": "many_to_one",
-        "from": "research_variable.research_project_id",
-        "to": "research_project.research_project_id",
-        "description": "Many records in research_variable reference research_project"
-      },
-      "research_variable_to_form": {
-        "type": "many_to_one",
-        "from": "research_variable.source_form_id",
-        "to": "form.form_id",
-        "description": "Many records in research_variable reference form"
-      },
-      "research_variable_to_form_field": {
-        "type": "many_to_one",
-        "from": "research_variable.source_field_id",
-        "to": "form_field.field_id",
-        "description": "Many records in research_variable reference form_field"
-      },
-      "residency_episode_to_individual": {
-        "type": "many_to_one",
-        "from": "residency_episode.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in residency_episode reference individual"
-      },
-      "residency_episode_to_household": {
-        "type": "many_to_one",
-        "from": "residency_episode.household_id",
-        "to": "household.household_id",
-        "description": "Many records in residency_episode reference household"
-      },
-      "site_to_country": {
-        "type": "many_to_one",
-        "from": "site.country_id",
-        "to": "country.country_id",
-        "description": "Many records in site reference country"
-      },
-      "site_user_to_site": {
-        "type": "many_to_one",
-        "from": "site_user.site_id",
-        "to": "site.site_id",
-        "description": "Many records in site_user reference site"
-      },
-      "site_user_to_role": {
-        "type": "many_to_one",
-        "from": "site_user.role_id",
-        "to": "role.role_id",
-        "description": "Many records in site_user reference role"
-      },
-      "site_user_to_user_profile": {
-        "type": "many_to_one",
-        "from": "site_user.user_profile_id",
-        "to": "user_profile.user_id",
-        "description": "Many records in site_user reference user_profile"
-      },
-      "structure_to_village": {
+      "structure_village": {
         "type": "many_to_one",
         "from": "structure.village_id",
-        "to": "village.village_id",
-        "description": "Many records in structure reference village"
+        "to": "village.village_id"
       },
-      "study_to_user_profile": {
-        "type": "many_to_one",
-        "from": "study.principal_investigator",
-        "to": "user_profile.user_id",
-        "description": "Many records in study reference user_profile"
-      },
-      "study_form_to_study": {
-        "type": "many_to_one",
-        "from": "study_form.study_id",
-        "to": "study.study_id",
-        "description": "Many records in study_form reference study"
-      },
-      "study_form_to_form": {
-        "type": "many_to_one",
-        "from": "study_form.form_id",
-        "to": "form.form_id",
-        "description": "Many records in study_form reference form"
-      },
-      "study_form_to_survey_round": {
-        "type": "many_to_one",
-        "from": "study_form.required_round_id",
-        "to": "survey_round.round_id",
-        "description": "Many records in study_form reference survey_round"
-      },
-      "study_participation_to_study": {
-        "type": "many_to_one",
-        "from": "study_participation.study_id",
-        "to": "study.study_id",
-        "description": "Many records in study_participation reference study"
-      },
-      "study_participation_to_individual": {
-        "type": "many_to_one",
-        "from": "study_participation.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in study_participation reference individual"
-      },
-      "survey_round_to_site": {
-        "type": "many_to_one",
-        "from": "survey_round.site_id",
-        "to": "site.site_id",
-        "description": "Many records in survey_round reference site"
-      },
-      "user_account_request_to_role": {
-        "type": "many_to_one",
-        "from": "user_account_request.requested_role_id",
-        "to": "role.role_id",
-        "description": "Many records in user_account_request reference role"
-      },
-      "user_account_request_to_site": {
-        "type": "many_to_one",
-        "from": "user_account_request.requested_site_id",
-        "to": "site.site_id",
-        "description": "Many records in user_account_request reference site"
-      },
-      "user_account_request_to_user_profile": {
-        "type": "many_to_one",
-        "from": "user_account_request.reviewed_by",
-        "to": "user_profile.user_id",
-        "description": "Many records in user_account_request reference user_profile"
-      },
-      "user_activity_log_to_user_profile": {
-        "type": "many_to_one",
-        "from": "user_activity_log.user_id",
-        "to": "user_profile.user_id",
-        "description": "Many records in user_activity_log reference user_profile"
-      },
-      "user_profile_to_role": {
-        "type": "many_to_one",
-        "from": "user_profile.role_id",
-        "to": "role.role_id",
-        "description": "Many records in user_profile reference role"
-      },
-      "user_profile_to_site": {
-        "type": "many_to_one",
-        "from": "user_profile.site_id",
-        "to": "site.site_id",
-        "description": "Many records in user_profile reference site"
-      },
-      "vaccination_to_individual": {
-        "type": "many_to_one",
-        "from": "vaccination.individual_id",
-        "to": "individual.individual_id",
-        "description": "Many records in vaccination reference individual"
-      },
-      "village_to_site": {
+      "village_site": {
         "type": "many_to_one",
         "from": "village.site_id",
-        "to": "site.site_id",
-        "description": "Many records in village reference site"
+        "to": "site.site_id"
+      },
+      "site_country": {
+        "type": "many_to_one",
+        "from": "site.country_id",
+        "to": "country.country_id"
+      },
+      "education_individual": {
+        "type": "many_to_one",
+        "from": "education.individual_id",
+        "to": "individual.individual_id"
+      },
+      "pregnancy_mother": {
+        "type": "many_to_one",
+        "from": "pregnancy.mother_id", 
+        "to": "individual.individual_id"
+      },
+      "birth_individual": {
+        "type": "one_to_one",
+        "from": "birth_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "birth_mother": {
+        "type": "many_to_one",
+        "from": "birth_event.mother_id",
+        "to": "individual.individual_id"
+      },
+      "death_individual": {
+        "type": "one_to_one",
+        "from": "death_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "migration_individual": {
+        "type": "many_to_one",
+        "from": "migration_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "vaccination_individual": {
+        "type": "many_to_one",
+        "from": "vaccination.individual_id",
+        "to": "individual.individual_id"
+      },
+      "censoring_individual": {
+        "type": "many_to_one",
+        "from": "censoring_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "livelihoods_household": {
+        "type": "one_to_one",
+        "from": "livelihoods.household_id",
+        "to": "household.household_id"
+      },
+      "amenities_household": {
+        "type": "one_to_one",
+        "from": "household_amenities.household_id",
+        "to": "household.household_id"
       }
-    },
-    "common_analysis_variables": {
-      "demographic": [
-        "sex",
-        "date_of_birth",
-        "marital_status",
-        "religion",
-        "ethnicity"
-      ],
-      "household": [
-        "household_code",
-        "start_date",
-        "end_date",
-        "dwelling_unit_id"
-      ],
-      "education": [
-        "school_level",
-        "currently_enrolled",
-        "highest_class_completed"
-      ],
-      "migration": [
-        "migration_type",
-        "from_location",
-        "to_location",
-        "migration_date"
-      ],
-      "health": [
-        "vaccine_type",
-        "dose_number",
-        "administration_date",
-        "birth_weight"
-      ],
-      "economic": [
-        "monthly_income",
-        "expenditure",
-        "has_income_generating_activity"
-      ],
-      "event_tracking": [
-        "event_type",
-        "event_date",
-        "created_at",
-        "updated_at"
-      ]
-    },
-    "sample_queries": {
-      "individuals_by_age_sex": "SELECT individual_id, sex, date_of_birth FROM individual WHERE date_of_birth IS NOT NULL AND sex IS NOT NULL;",
-      "pregnancies_with_outcomes": "SELECT pregnancy_id, mother_id, outcome, delivery_date FROM pregnancy WHERE outcome IS NOT NULL;",
-      "vaccination_coverage": "SELECT vaccine_type, COUNT(*) as total_doses FROM vaccination GROUP BY vaccine_type;",
-      "migration_flows": "SELECT migration_type, COUNT(*) as total_migrations FROM migration_event GROUP BY migration_type;",
-      "education_enrollment_status": "SELECT school_level, currently_enrolled, COUNT(*) as total FROM education GROUP BY school_level, currently_enrolled;"
     }
   }
 }
