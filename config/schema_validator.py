@@ -328,7 +328,8 @@ class DynamicSchemaValidator:
             return [0.0] * row_count
             
         elif data_type == 'BOOLEAN':
-            return [False] * row_count
+            # FIX 1: The default for an unknown boolean should be None (NULL), not False.
+            return [None] * row_count
             
         elif data_type == 'DATE':
             return ['2024-01-01'] * row_count
@@ -470,29 +471,33 @@ class DynamicSchemaValidator:
         try:
             # Create boolean mapping for survey responses
             bool_mapping = {
-                # Standard boolean
+                # Standard boolean values
                 'yes': True, 'no': False, 'true': True, 'false': False,
-                '1': True, '0': False, 1: True, 0: False,
+                '1': True, '0': False, 1: True, 0: False, 1.0: True, 0.0: False,
                 
-                # Survey-specific responses that should be False/None
+                # Survey-specific responses that should correctly map to None (NULL)
                 'niu (not in universe)': None,
                 'not asked': None,
-                'don\'t know': None,
+                "don't know": None,
                 'missing': None,
                 'na': None,
                 '': None,
                 'nan': None
             }
             
-            # Convert to string and lowercase for mapping
-            str_series = series.astype(str).str.lower()
+            # Convert to string and lowercase for robust mapping
+            # Using .get allows for a default value (None) if a key is not in the map
+            str_series = series.astype(str).str.lower().str.strip()
             result = str_series.map(bool_mapping)
-            
-            # FIXED: Fill remaining unmapped values with explicit value
-            return result.fillna(value=None)
+
+            # FIX 2: Ensure that any value NOT in the map becomes None.
+            # This prevents pandas from trying to fill with a default that overwrites our explicit `None` mappings.
+            # The result is a series containing only True, False, or None.
+            return result.where(pd.notna(result), None).astype('object')
             
         except Exception as e:
             print(f"   ⚠️  Boolean conversion error: {e}")
+            # Ensure the fallback is a series of None values with the correct object type
             return pd.Series([None] * len(series), dtype='object')
     
     def get_validation_summary(self, table_validations: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
