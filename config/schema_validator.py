@@ -365,26 +365,47 @@ class DynamicSchemaValidator:
     
     def _generate_foreign_key_values(self, field_req: FieldRequirement, row_count: int, 
                                    source_data_df: pd.DataFrame) -> List[Any]:
-        """Generate foreign key values by looking for related data"""
+        """
+        Generate foreign key values by looking for related data, now with
+        correct data type handling for UUIDs.
+        """
+        if not field_req.references or '.' not in field_req.references:
+            # Fallback if reference info is missing
+            return list(range(1, row_count + 1))
+
+        ref_table, ref_column = field_req.references.split('.', 1)
+
+        # Find the schema requirements for the referenced primary key to get its type
+        ref_table_reqs = self.table_requirements.get(ref_table)
+        ref_field_req = ref_table_reqs.required_fields.get(ref_column) or ref_table_reqs.optional_fields.get(ref_column) if ref_table_reqs else None
+
+        if not ref_field_req:
+            # Fallback if referenced column schema can't be found
+            return list(range(1, row_count + 1))
+
+        # Determine the expected data type (e.g., 'UUID' or 'INTEGER')
+        expected_type = ref_field_req.data_type
+
+        # Look for potential matching columns in the original source data
+        potential_columns = [col for col in source_data_df.columns 
+                           if ref_column in col.lower() or ref_table in col.lower()]
         
-        # Try to find related primary key values in source data
-        if field_req.references:
-            # Parse reference: "table.column"
-            if '.' in field_req.references:
-                ref_table, ref_column = field_req.references.split('.', 1)
-                
-                # Look for potential matching columns in source data
-                potential_columns = [col for col in source_data_df.columns 
-                                   if ref_column in col.lower() or ref_table in col.lower()]
-                
-                if potential_columns:
-                    # Use values from the first matching column
-                    ref_values = source_data_df[potential_columns[0]].fillna(0).astype(int)
-                    return ref_values.tolist()[:row_count]
-        
-        # Default to sequential IDs
+        if potential_columns:
+            source_column = potential_columns[0]
+            ref_values = source_data_df[source_column]
+
+            # THIS IS THE FIX: Only convert to integer if the referenced key is an integer.
+            # Otherwise, treat it as a string (for UUIDs).
+            if expected_type == 'INTEGER':
+                # Safely convert to numeric, then to nullable integer
+                return pd.to_numeric(ref_values, errors='coerce').fillna(0).astype(int).tolist()[:row_count]
+            else: # For UUID, TEXT, etc.
+                # Convert to string and handle potential nulls
+                return ref_values.astype(str).fillna('').tolist()[:row_count]
+
+        # Final fallback if no matching source column is found
         return list(range(1, row_count + 1))
-    
+
     def _convert_data_types(self, df: pd.DataFrame, requirements: TableRequirements) -> pd.DataFrame:
         """Convert DataFrame columns to match schema requirements"""
         
@@ -395,73 +416,84 @@ class DynamicSchemaValidator:
         for col in converted_df.columns:
             if col in all_fields:
                 field_req = all_fields[col]
+                # This is where the conversion happens. The fix is in the method below.
                 converted_df[col] = self._convert_column_type(converted_df[col], field_req)
                 print(f"   🔄 Converted {col} to {field_req.data_type}")
         
         return converted_df
     
     def _convert_column_type(self, series: pd.Series, field_req: FieldRequirement) -> pd.Series:
-        """Convert a pandas series to match field requirements"""
-        
+        """
+        Convert a pandas series to match schema requirements, correctly handling
+        UUIDs, integers, and other types gracefully.
+        """
+        expected_type = field_req.data_type
+        field_name = field_req.field_name
+
         try:
-            if field_req.data_type == 'INTEGER':
-                # FIXED: Handle UUID strings properly
-                if series.dtype == 'object':
-                    # Check if values look like UUIDs
-                    sample_value = str(series.iloc[0]) if len(series) > 0 else ""
-                    if len(sample_value) > 20 and '-' in sample_value:
-                        # These are UUIDs, generate sequential integers instead
-                        return pd.Series(range(1, len(series) + 1), dtype='Int64')
-                    else:
-                        # Try normal numeric conversion
-                        return pd.to_numeric(series, errors='coerce').fillna(0).astype('Int64')
-                else:
-                    return pd.to_numeric(series, errors='coerce').fillna(0).astype('Int64')
-                
-            elif field_req.data_type == 'NUMERIC':
-                return pd.to_numeric(series, errors='coerce').fillna(0.0)
-                
-            elif field_req.data_type == 'BOOLEAN':
-                # FIXED: Better boolean conversion
+            # If the schema explicitly expects a UUID, treat it as a string.
+            # This is the primary fix: respect the schema's intent for UUIDs.
+            if expected_type == 'UUID':
+                # Ensure all values are strings and replace any 'nan' strings from previous steps.
+                return series.astype(str).replace('nan', '').fillna('')
+
+            # If the schema expects an INTEGER, convert to numeric.
+            if expected_type == 'INTEGER':
+                # Coerce errors will turn non-numeric values (like UUIDs) into NaT.
+                converted = pd.to_numeric(series, errors='coerce')
+                # Fill any resulting nulls with 0 and cast to a nullable integer type.
+                return converted.fillna(0).astype('Int64')
+
+            elif expected_type == 'NUMERIC':
+                converted = pd.to_numeric(series, errors='coerce')
+                return converted.fillna(0.0)
+
+            elif expected_type == 'BOOLEAN':
                 return self._convert_to_boolean_safe(series)
                 
-            elif field_req.data_type == 'DATE':
-                return pd.to_datetime(series, errors='coerce').dt.date
+            elif expected_type in ['DATE', 'TIMESTAMP']:
+                converted = pd.to_datetime(series, errors='coerce')
+                # pd.NaT is the correct null representation for datetime types.
+                return converted.fillna(pd.NaT)
                 
-            elif field_req.data_type == 'TIMESTAMP':
-                return pd.to_datetime(series, errors='coerce')
-                
-            else:  # TEXT, UUID, etc.
-                return series.astype(str).replace('nan', '')
-                
+            else:  # Default to TEXT for any other type
+                return series.astype(str).fillna('')
+            
         except Exception as e:
-            print(f"   ⚠️  Failed to convert {field_req.field_name}: {e}")
-            return series
-
+            print(f"   ⚠️  Type conversion failed for '{field_name}' to '{expected_type}': {e}. Falling back to string.")
+            # Safe fallback: if any conversion fails, convert to string to prevent crashes.
+            return series.astype(str).fillna('')
+    
     def _convert_to_boolean_safe(self, series: pd.Series) -> pd.Series:
         """Safe boolean conversion handling survey responses"""
         
-        # Create boolean mapping for survey responses
-        bool_mapping = {
-            # Standard boolean
-            'yes': True, 'no': False, 'true': True, 'false': False,
-            '1': True, '0': False, 1: True, 0: False,
+        try:
+            # Create boolean mapping for survey responses
+            bool_mapping = {
+                # Standard boolean
+                'yes': True, 'no': False, 'true': True, 'false': False,
+                '1': True, '0': False, 1: True, 0: False,
+                
+                # Survey-specific responses that should be False/None
+                'niu (not in universe)': None,
+                'not asked': None,
+                'don\'t know': None,
+                'missing': None,
+                'na': None,
+                '': None,
+                'nan': None
+            }
             
-            # Survey-specific responses that should be False/None
-            'niu (not in universe)': None,
-            'not asked': None,
-            'don\'t know': None,
-            'missing': None,
-            'na': None,
-            '': None,
-            'nan': None
-        }
-        
-        # Convert to string and lowercase for mapping
-        result = series.astype(str).str.lower().map(bool_mapping)
-        
-        # Fill remaining unmapped values with None
-        return result.fillna(value=None)  # FIXED: Explicit value parameter
+            # Convert to string and lowercase for mapping
+            str_series = series.astype(str).str.lower()
+            result = str_series.map(bool_mapping)
+            
+            # FIXED: Fill remaining unmapped values with explicit value
+            return result.fillna(value=None)
+            
+        except Exception as e:
+            print(f"   ⚠️  Boolean conversion error: {e}")
+            return pd.Series([None] * len(series), dtype='object')
     
     def get_validation_summary(self, table_validations: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """Generate comprehensive validation summary"""
@@ -487,3 +519,45 @@ class DynamicSchemaValidator:
             'missing_required_fields': all_missing_required,
             'overall_valid': len(all_missing_required) == 0
         }
+    
+    def _is_uuid_format(self, value: str) -> bool:
+        """Check if a string value looks like a UUID"""
+        if not isinstance(value, str) or len(value) != 36:
+            return False
+        
+        # UUID format: 8-4-4-4-12 characters with hyphens
+        uuid_pattern = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        import re
+        return bool(re.match(uuid_pattern, value))
+
+    def _detect_actual_data_type(self, series: pd.Series) -> str:
+        """Detect the actual data type from the series content"""
+        if len(series) == 0:
+            return 'TEXT'
+        
+        # Get first non-null value
+        sample_value = None
+        for val in series.dropna():
+            if pd.notna(val):
+                sample_value = str(val)
+                break
+        
+        if not sample_value:
+            return 'TEXT'
+        
+        # Check for UUID
+        if self._is_uuid_format(sample_value):
+            return 'UUID'
+        
+        # Check for numeric
+        try:
+            float(sample_value)
+            return 'NUMERIC'
+        except:
+            pass
+        
+        # Check for boolean-like
+        if sample_value.lower() in ['true', 'false', '1', '0', 'yes', 'no']:
+            return 'BOOLEAN'
+        
+        return 'TEXT'
