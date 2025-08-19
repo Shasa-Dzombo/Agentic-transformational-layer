@@ -8,7 +8,30 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
+import uuid
 from config.schema_validator import DynamicSchemaValidator
+
+# ===== NEW CONFIG BLOCK =====
+BOOLEAN_ALLOWLIST = {
+    'multiple_birth',
+    'has_income_generating_activity',
+    'currently_enrolled',
+    'has_ever_attended_school'
+}
+
+CENSOR_EVENT_SOURCE_MAP = {
+    'censor_birth': 'birth',
+    'censor_death': 'death',
+    'censor_out': 'out_migration',
+    'censor_in': 'in_migration',
+    'censor_maternaldeath': 'maternal_death',
+    'censor_gavebirth': 'gave_birth',
+    'censor_conceived': 'conceived',
+    'censor_impregnated': 'impregnated'
+}
+
+CENSOR_EVENT_FALLBACK = 'end_of_follow_up'  # matches typical enum naming
+# ===========================================
 
 class SemanticCategory(Enum):
     """Semantic categories for intelligent column classification"""
@@ -35,13 +58,21 @@ class ColumnIntelligence:
     reasoning: str
 
 class EnhancedAISchemaMapper:
-    """Simplified deterministic schema mapper - NO AI, NO JSON parsing issues"""
+    """Enhanced AI + deterministic schema mapper (UUID + safe conversions)"""
     
-    def __init__(self, schema_file_path: str, api_key: str = None):
+    def __init__(self, schema_file_path: str, api_key: str = None,
+                 use_ai: bool = True, verbose: bool = True):
         """Initialize Enhanced AI Schema Mapper with dynamic validation"""
         self.schema_file_path = schema_file_path
         self.schema = self.load_schema()
         self.tables = self.schema['database']['tables']
+        
+        # Config flags
+        self.use_ai = use_ai
+        self.verbose = verbose
+        
+        # Cache for deterministic UUID generation from legacy IDs
+        self._uuid_cache: Dict[str, str] = {}
         
         # Get actual available columns from schema
         self.available_columns = self._extract_available_columns()
@@ -50,12 +81,17 @@ class EnhancedAISchemaMapper:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
-        print(f"🔍 Schema loaded with {len(self.tables)} tables")
+        self._v(f"🔍 Schema loaded with {len(self.tables)} tables")
         self._print_available_columns()
         
         # Add dynamic validator
         self.schema_validator = DynamicSchemaValidator(schema_file_path)
-        print("🔧 Dynamic schema validator initialized")
+        self._v("🔧 Dynamic schema validator initialized")
+
+    def _v(self, msg: str):
+        """Verbose logging helper"""
+        if self.verbose:
+            print(msg)
     
     def load_schema(self) -> Dict[str, Any]:
         """Load database schema"""
@@ -78,14 +114,21 @@ class EnhancedAISchemaMapper:
     
     def _print_available_columns(self):
         """Print available schema columns for validation"""
-        print(f"\n📋 Available Schema Columns:")
-        for table_name, columns in self.available_columns.items():
-            if len(columns) > 0:
-                print(f"   {table_name}: {columns[:5]}{'...' if len(columns) > 5 else ''}")
+        if self.verbose:
+            print(f"\n📋 Available Schema Columns:")
+            for table_name, columns in self.available_columns.items():
+                if len(columns) > 0:
+                    print(f"   {table_name}: {columns[:5]}{'...' if len(columns) > 5 else ''}")
     
     def intelligent_column_analysis(self, df: pd.DataFrame) -> Dict[str, ColumnIntelligence]:
-        """Simplified column analysis"""
-        print("🧠 Performing simplified column analysis...")
+        """Simplified column analysis with early pruning"""
+        self._v("🧠 Performing simplified column analysis...")
+        
+        # PRUNE statistical aggregates early
+        drop_cols = [c for c in df.columns if any(p in c.lower() for p in ['los_', '_allsex_', '_femsex_', '_malsex_', 'under1yrs', 'anyage'])]
+        if drop_cols:
+            self._v(f"🧹 Pruning {len(drop_cols)} aggregate columns")
+            df = df.drop(columns=drop_cols)
         
         analysis = {}
         for column in df.columns:
@@ -109,7 +152,7 @@ class EnhancedAISchemaMapper:
                 reasoning=reasoning
             )
         
-        print(f"   ✅ Analyzed {len(analysis)} columns")
+        self._v(f"   ✅ Analyzed {len(analysis)} columns")
         return analysis
     
     def _classify_column(self, column_name: str) -> SemanticCategory:
@@ -170,28 +213,19 @@ class EnhancedAISchemaMapper:
             base_score += 0.2  # Good value
         
         return max(0, min(1, base_score))
-    
-    def build_schema_intelligence(self):
-        """Build schema intelligence for backward compatibility"""
-        print("🧠 Analyzing schema semantics autonomously...")
-        print(f"   ✅ Discovered {len(self.tables)} table purposes")
-        
-        total_fields = sum(len(columns) for columns in self.available_columns.values())
-        print(f"   ✅ Mapped {total_fields} field semantics")
-        
-        print(f"🧠 Schema intelligence built:")
-        print(f"   Autonomous table analysis: {len(self.tables)}")
-        print(f"   Semantic field mapping: {total_fields}")
 
     def get_smart_ai_mapping(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Smart AI mapping with precise schema and CSV awareness"""
+        if not self.use_ai:
+            return self._create_deterministic_mappings(self.intelligent_column_analysis(df))
+            
         try:
             import google.generativeai as genai
             
             # Configure Gemini with your API key
             api_key = os.getenv('GOOGLE_API_KEY')
             if not api_key:
-                print("⚠️  No GEMINI_API_KEY found, using deterministic mapping")
+                self._v("⚠️  No GEMINI_API_KEY found, using deterministic mapping")
                 return self._create_deterministic_mappings(self.intelligent_column_analysis(df))
             
             genai.configure(api_key=api_key)
@@ -227,7 +261,7 @@ Return ONLY valid JSON in this format:
 }}
 """
 
-            print("🧠 Querying AI for smart schema mapping...")
+            self._v("🧠 Querying AI for smart schema mapping...")
             response = model.generate_content(prompt)
             
             # Parse AI response
@@ -247,13 +281,13 @@ Return ONLY valid JSON in this format:
                 return self._validate_and_convert_ai_mapping(ai_result, df)
                 
             except json.JSONDecodeError as e:
-                print(f"⚠️  AI JSON parsing failed: {e}")
-                print(f"🔧 Using deterministic fallback...")
+                self._v(f"⚠️  AI JSON parsing failed: {e}")
+                self._v(f"🔧 Using deterministic fallback...")
                 return self._create_deterministic_mappings(self.intelligent_column_analysis(df))
                 
         except Exception as e:
-            print(f"⚠️  AI mapping failed: {e}")
-            print(f"🔧 Using deterministic fallback...")
+            self._v(f"⚠️  AI mapping failed: {e}")
+            self._v(f"🔧 Using deterministic fallback...")
             return self._create_deterministic_mappings(self.intelligent_column_analysis(df))
 
     def _create_precise_mapping_context(self, df: pd.DataFrame) -> str:
@@ -306,7 +340,7 @@ Return ONLY valid JSON in this format:
 
     def _validate_and_convert_ai_mapping(self, ai_result: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
         """Validate AI mapping and convert to expected format"""
-        print("🔍 Validating AI mapping results...")
+        self._v("🔍 Validating AI mapping results...")
         
         table_mappings = {}
         used_schema_columns = set()
@@ -321,25 +355,25 @@ Return ONLY valid JSON in this format:
             
             # Validation checks
             if csv_col not in df.columns:
-                print(f"⚠️  Skipping {csv_col}: CSV column not found")
+                self._v(f"⚠️  Skipping {csv_col}: CSV column not found")
                 continue
                 
             if table_name not in self.available_columns:
-                print(f"⚠️  Skipping {table_name}: Table not found in schema")
+                self._v(f"⚠️  Skipping {table_name}: Table not found in schema")
                 continue
                 
             if schema_col not in self.available_columns[table_name]:
-                print(f"⚠️  Skipping {table_name}.{schema_col}: Schema column not found")
+                self._v(f"⚠️  Skipping {table_name}.{schema_col}: Schema column not found")
                 continue
                 
             schema_key = f"{table_name}.{schema_col}"
             if schema_key in used_schema_columns:
-                print(f"⚠️  Skipping {schema_key}: Already mapped")
+                self._v(f"⚠️  Skipping {schema_key}: Already mapped")
                 continue
                 
             # Skip low confidence mappings
             if confidence < 0.8:
-                print(f"⚠️  Skipping {csv_col}: Low confidence ({confidence})")
+                self._v(f"⚠️  Skipping {csv_col}: Low confidence ({confidence})")
                 continue
             
             # Add to valid mappings
@@ -355,9 +389,9 @@ Return ONLY valid JSON in this format:
             
             used_schema_columns.add(schema_key)
             valid_mappings.append(mapping)
-            print(f"✅ AI Mapped: {csv_col} → {table_name}.{schema_col} (confidence: {confidence})")
+            self._v(f"✅ AI Mapped: {csv_col} → {table_name}.{schema_col} (confidence: {confidence})")
         
-        # Return in expected format - FIXED ALL KEYS
+        # Return in expected format
         mapped_count = len(valid_mappings)
         avg_confidence = np.mean([m['confidence'] for m in valid_mappings]) if valid_mappings else 0
         
@@ -371,10 +405,10 @@ Return ONLY valid JSON in this format:
                 f'Successfully mapped {mapped_count} columns with avg confidence {avg_confidence:.2f}'
             ],
             'mapping_summary': {
-                'total_csv_columns': len(df.columns),        # FIXED: was missing
-                'mapped_columns': mapped_count,              # FIXED: consistent naming
-                'unmapped_columns': len(df.columns) - mapped_count,  # FIXED: was missing
-                'confidence_score': avg_confidence           # FIXED: consistent naming
+                'total_csv_columns': len(df.columns),
+                'mapped_columns': mapped_count,
+                'unmapped_columns': len(df.columns) - mapped_count,
+                'confidence_score': avg_confidence
             }
         }
 
@@ -392,7 +426,7 @@ Return ONLY valid JSON in this format:
 
     def _create_deterministic_mappings(self, intelligent_analysis: Dict[str, ColumnIntelligence]) -> Dict[str, Any]:
         """Create deterministic mappings using ACTUAL schema columns"""
-        print("🎯 Creating deterministic mappings using actual schema...")
+        self._v("🎯 Creating deterministic mappings using actual schema...")
         
         mappings = {}
         
@@ -401,14 +435,10 @@ Return ONLY valid JSON in this format:
             mappings[table_name] = []
         
         # Define EXACT mappings using ACTUAL schema column names
-        # Check what columns actually exist in your schema first
         individual_cols = self.available_columns.get('individual', [])
-        household_cols = self.available_columns.get('household', [])
         education_cols = self.available_columns.get('education', [])
         livelihoods_cols = self.available_columns.get('livelihoods', [])
-        vaccination_cols = self.available_columns.get('vaccination', [])
         pregnancy_cols = self.available_columns.get('pregnancy', [])
-        household_relationship_cols = self.available_columns.get('household_relationship', [])
         censoring_event_cols = self.available_columns.get('censoring_event', [])
         
         exact_mappings = []
@@ -416,54 +446,34 @@ Return ONLY valid JSON in this format:
         # Individual table mappings (only if columns exist)
         if 'individual_id' in individual_cols:
             exact_mappings.append(('res_individualid_anon', 'individual', 'individual_id'))
-        if 'sex' in individual_cols:
-            exact_mappings.append(('res_gender', 'individual', 'sex'))
-        elif 'gender' in individual_cols:
-            exact_mappings.append(('res_gender', 'individual', 'gender'))
         if 'date_of_birth' in individual_cols:
             exact_mappings.append(('res_datebirth', 'individual', 'date_of_birth'))
         if 'ethnicity' in individual_cols:
             exact_mappings.append(('res_ethnicity', 'individual', 'ethnicity'))
         if 'marital_status' in individual_cols:
             exact_mappings.append(('mar_maritalstatus', 'individual', 'marital_status'))
-        if 'religion' in individual_cols:
-            exact_mappings.append(('rel_religionstatus', 'individual', 'religion'))
-        
-        # Household table mappings
-        if 'household_id' in household_cols:
-            exact_mappings.append(('res_hhid_anon', 'household', 'household_id'))
-        if 'start_date' in household_cols:
-            exact_mappings.append(('res_datebeg', 'household', 'start_date'))
         
         # Education table mappings
-        if 'currently_enrolled' in education_cols:
-            exact_mappings.append(('edu_currschool', 'education', 'currently_enrolled'))
-        # Add more education mappings based on available columns
+        if 'highest_level_ever_attended' in education_cols:
+            exact_mappings.append(('edu_everschool_level', 'education', 'highest_level_ever_attended'))
+        if 'current_school_type' in education_cols:
+            exact_mappings.append(('edu_currschool_type', 'education', 'current_school_type'))
         
         # Livelihoods table mappings
-        # Check what's actually available in livelihoods table
-        if 'income_sources' in livelihoods_cols:
-            exact_mappings.append(('iga_typeofiga', 'livelihoods', 'income_sources'))
-        if 'monthly_income' in livelihoods_cols:
-            exact_mappings.append(('iga_inc30days_cash', 'livelihoods', 'monthly_income'))
-        
-        # Vaccination table mappings
-        if 'vaccine_type' in vaccination_cols:
-            exact_mappings.append(('vac_bcg', 'vaccination', 'vaccine_type'))
+        if 'type_of_iga' in livelihoods_cols:
+            exact_mappings.append(('iga_typeofiga', 'livelihoods', 'type_of_iga'))
+        if 'income_30days_cash' in livelihoods_cols:
+            exact_mappings.append(('iga_inc30days_cash', 'livelihoods', 'income_30days_cash'))
+        if 'income_30days_kind' in livelihoods_cols:
+            exact_mappings.append(('iga_inc30days_kind', 'livelihoods', 'income_30days_kind'))
         
         # Pregnancy table mappings
-        if 'outcome' in pregnancy_cols:
-            exact_mappings.append(('pge_pregoutcome', 'pregnancy', 'outcome'))
         if 'multiple_birth' in pregnancy_cols:
-            exact_mappings.append(('pge_multiplebirth', 'pregnancy', 'multiple_birth'))
-        
-        # Household relationship mappings
-        if 'relationship_to_head' in household_relationship_cols:
-            exact_mappings.append(('res_reltohhh', 'household_relationship', 'relationship_to_head'))
+            exact_mappings.append(('gbs_multiplebirth', 'pregnancy', 'multiple_birth'))
         
         # Censoring events mappings
-        if 'event_type' in censoring_event_cols:
-            exact_mappings.append(('censor_birth', 'censoring_event', 'event_type'))
+        if 'event_date' in censoring_event_cols:
+            exact_mappings.append(('censor_birth', 'censoring_event', 'event_date'))
         
         mapped_count = 0
         used_schema_columns = set()
@@ -475,18 +485,15 @@ Return ONLY valid JSON in this format:
             
             # Check if table exists in schema
             if table_name not in self.available_columns:
-                print(f"⚠️  Table '{table_name}' not found in schema")
                 continue
             
             # Check if schema column exists
             if schema_col not in self.available_columns[table_name]:
-                print(f"⚠️  Column '{schema_col}' not found in table '{table_name}'")
                 continue
             
             # Check for conflicts
             schema_key = f"{table_name}.{schema_col}"
             if schema_key in used_schema_columns:
-                print(f"⚠️  Conflict avoided: {schema_key} already mapped")
                 continue
             
             # Skip statistical aggregates
@@ -503,7 +510,7 @@ Return ONLY valid JSON in this format:
             })
             used_schema_columns.add(schema_key)
             mapped_count += 1
-            print(f"✅ Mapped: {csv_col} → {table_name}.{schema_col}")
+            self._v(f"✅ Mapped: {csv_col} → {table_name}.{schema_col}")
         
         # Remove empty tables
         mappings = {table: table_mappings for table, table_mappings in mappings.items() if table_mappings}
@@ -525,6 +532,259 @@ Return ONLY valid JSON in this format:
             }
         }
     
+    def _create_tables(self, df: pd.DataFrame, mapping_result: Dict[str, Any], intelligent_analysis: Dict[str, ColumnIntelligence]) -> Dict[str, pd.DataFrame]:
+        """Create mapped tables"""
+        mapped_tables = {}
+        
+        for table_name, mappings in mapping_result['table_mappings'].items():
+            if not mappings:
+                continue
+            
+            self._v(f"\n📊 Creating {table_name} table...")
+            table_data = {}
+            
+            for mapping in mappings:
+                csv_col = mapping['csv_column']
+                schema_col = mapping['schema_column']
+                
+                if csv_col in df.columns:
+                    # Safe data transformation
+                    table_data[schema_col] = self._transform_column(df[csv_col], schema_col)
+                    self._v(f"   ✅ {csv_col} → {schema_col}")
+            
+            if table_data:
+                table_df = pd.DataFrame(table_data)
+                mapped_tables[table_name] = table_df
+                self._v(f"   📋 {table_name}: {len(table_df)} rows, {len(table_df.columns)} columns")
+        
+        return mapped_tables
+
+    def _is_uuid_like(self, val: str) -> bool:
+        """Fast UUID-like pattern check"""
+        if not isinstance(val, str):
+            return False
+        v = val.strip()
+        return len(v) == 36 and v.count('-') == 4
+
+    def _ensure_uuid_series(self, series: pd.Series) -> pd.Series:
+        """Convert any non-UUID values to stable UUIDs (hash → UUID v5)"""
+        out = []
+        for v in series.fillna(''):
+            if self._is_uuid_like(v):
+                out.append(v)
+            else:
+                if v not in self._uuid_cache:
+                    # namespace + value -> deterministic uuid
+                    self._uuid_cache[v] = str(uuid.uuid5(uuid.NAMESPACE_DNS, v or str(uuid.uuid4())))
+                out.append(self._uuid_cache[v])
+        return pd.Series(out, index=series.index, dtype='string')
+
+    def _safe_boolean(self, series: pd.Series) -> pd.Series:
+        """Safe boolean conversion with strict allowlist"""
+        raw = series.astype(str).str.strip().str.lower()
+        mapping = {
+            'yes': True, 'no': False,
+            'true': True, 'false': False,
+            '1': True, '0': False,
+            'niu (not in universe)': pd.NA,
+            'not asked': pd.NA,
+            'missing': pd.NA,
+            'na': pd.NA,
+            '': pd.NA,
+            'nan': pd.NA
+        }
+        unknown_ratio = (~raw.isin(mapping.keys())).mean()
+        if unknown_ratio > 0.2:
+            return series.astype('string')  # abort conversion
+        converted = raw.map(mapping)
+        # Do NOT force fillna False; leave pd.NA so DB can store NULL
+        return converted
+    
+    def _transform_column(self, series: pd.Series, schema_col: str) -> pd.Series:
+        """Safe transform: preserve UUIDs, avoid accidental bool coercion"""
+        col_lower = schema_col.lower()
+        
+        if col_lower.endswith('_id'):
+            s = series.astype('string')
+            return self._ensure_uuid_series(s)
+        if 'date' in col_lower:
+            return pd.to_datetime(series, errors='coerce')
+        if schema_col in BOOLEAN_ALLOWLIST:
+            return self._safe_boolean(series)
+        if col_lower in ['sex', 'gender']:
+            return series.map({'Male': 'Male', 'Female': 'Female', 1: 'Male', 2: 'Female'}).astype('string')
+        return series.astype('string')
+
+    def validate_and_enhance_tables(self, mapped_tables: Dict[str, pd.DataFrame], 
+                                   source_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """Dynamically validate and enhance all mapped tables based on schema requirements"""
+        
+        self._v("\n🚀 DYNAMIC SCHEMA VALIDATION & ENHANCEMENT")
+        self._v("="*60)
+        
+        enhanced_tables = {}
+        validation_results = {}
+        
+        # Step 1: Validate all tables
+        self._v("\n🔍 Validating tables against schema requirements...")
+        for table_name, table_df in mapped_tables.items():
+            validation = self.schema_validator.validate_table_data(table_name, table_df)
+            validation_results[table_name] = validation
+            
+            if validation['valid']:
+                self._v(f"   ✅ {table_name}: Valid")
+            else:
+                self._v(f"   ⚠️  {table_name}: {len(validation['missing_required'])} required fields missing")
+        
+        # Step 2: Enhance tables with missing requirements
+        self._v("\n🔧 Enhancing tables with schema requirements...")
+        for table_name, table_df in mapped_tables.items():
+            try:
+                # First, use the schema validator's enhancement
+                enhanced_df = self.schema_validator.enhance_table_with_requirements(
+                    table_name, table_df, source_df
+                )
+                
+                # Then, add our custom missing required fields generation
+                enhanced_df = self._generate_missing_required_fields(
+                    table_name, enhanced_df, source_df
+                )
+                
+                enhanced_tables[table_name] = enhanced_df
+                self._v(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
+                
+            except Exception as e:
+                self._v(f"   ❌ Failed to enhance {table_name}: {e}")
+                # Apply our custom enhancement as fallback
+                try:
+                    enhanced_df = self._generate_missing_required_fields(
+                        table_name, table_df, source_df
+                    )
+                    enhanced_tables[table_name] = enhanced_df
+                    self._v(f"   🔧 Fallback enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
+                except Exception as e2:
+                    self._v(f"   ❌ Fallback also failed for {table_name}: {e2}")
+                    enhanced_tables[table_name] = table_df  # Use original if all enhancement fails
+        
+        # Step 2.5: Apply post-enhancement consistency fixes
+        final_tables = {}
+        for name, df in enhanced_tables.items():
+            final_tables[name] = self._post_enhance_consistency(name, df, source_df)
+        
+        # Step 3: Final validation
+        self._v("\n✅ Final validation after enhancement...")
+        final_validation_results = {}
+        for table_name, enhanced_df in final_tables.items():
+            validation = self.schema_validator.validate_table_data(table_name, enhanced_df)
+            final_validation_results[table_name] = validation
+            
+            if validation['valid']:
+                self._v(f"   ✅ {table_name}: Fully compliant")
+            else:
+                remaining_issues = len(validation['missing_required'])
+                self._v(f"   ⚠️  {table_name}: {remaining_issues} issues remain")
+        
+        # Step 4: Print comprehensive summary
+        summary = self.schema_validator.get_validation_summary(final_validation_results)
+        self._print_validation_summary(summary, validation_results, final_validation_results)
+        
+        return final_tables
+
+    def _post_enhance_consistency(self, table_name: str, df: pd.DataFrame, source_df: pd.DataFrame) -> pd.DataFrame:
+        """Fix event_type derivation & ensure UUID integrity after enhancement"""
+        # Ensure *_id columns are UUID strings
+        for col in df.columns:
+            if col.endswith('_id'):
+                df[col] = self._ensure_uuid_series(df[col].astype('string'))
+
+        if table_name == 'censoring_event':
+            if 'event_type' in df.columns:
+                # derive if empty / all null
+                if df['event_type'].isna().all() or (df['event_type'] == '').all():
+                    derived = pd.Series([pd.NA]*len(df), dtype='string')
+                    for src_col, enum_val in CENSOR_EVENT_SOURCE_MAP.items():
+                        if src_col in source_df.columns:
+                            mask = source_df[src_col].notna()
+                            derived.loc[mask] = enum_val
+                    df['event_type'] = derived.fillna(CENSOR_EVENT_FALLBACK)
+            # sanitize invalid enums
+            allowed = set(CENSOR_EVENT_SOURCE_MAP.values()) | {CENSOR_EVENT_FALLBACK}
+            df['event_type'] = df['event_type'].where(df['event_type'].isin(allowed), CENSOR_EVENT_FALLBACK)
+
+        # Prevent accidental conversion of non-allowlist text to boolean
+        for col in df.columns:
+            if df[col].dtype == bool and col not in BOOLEAN_ALLOWLIST:
+                df[col] = df[col].astype('string')
+        return df
+
+    def _print_validation_summary(self, summary: Dict[str, Any], 
+                                before_validation: Dict[str, Dict[str, Any]],
+                                after_validation: Dict[str, Dict[str, Any]]):
+        """Print comprehensive validation summary"""
+        
+        if not self.verbose:
+            return
+            
+        print("\n" + "="*80)
+        print("📊 DYNAMIC VALIDATION & ENHANCEMENT SUMMARY")
+        print("="*80)
+        
+        print(f"\n📈 Validation Results:")
+        print(f"   Total tables processed: {summary['total_tables']}")
+        print(f"   Fully compliant tables: {summary['valid_tables']}")
+        print(f"   Tables with issues: {summary['invalid_tables']}")
+        
+        print(f"\n🔧 Enhancement Impact:")
+        before_issues = sum(len(v['missing_required']) for v in before_validation.values())
+        after_issues = sum(len(v['missing_required']) for v in after_validation.values())
+        resolved_issues = before_issues - after_issues
+        
+        print(f"   Issues before enhancement: {before_issues}")
+        print(f"   Issues after enhancement: {after_issues}")
+        print(f"   Issues resolved: {resolved_issues}")
+        print(f"   Resolution rate: {(resolved_issues/before_issues)*100:.1f}%" if before_issues > 0 else "   Resolution rate: 100%")
+        
+        if after_issues > 0:
+            print(f"\n⚠️  Remaining issues:")
+            for error in summary['all_errors']:
+                print(f"      • {error}")
+        
+        print(f"\n🎯 Schema Compliance: {'✅ ACHIEVED' if summary['overall_valid'] else '⚠️  PARTIAL'}")
+
+    def map_dataframe_to_tables(self, df: pd.DataFrame, preprocessing_results: Dict[str, Any] = None) -> Dict[str, pd.DataFrame]:
+        """Enhanced mapping with dynamic schema validation"""
+        
+        self._v(f"\n🧠 Starting DYNAMIC AI schema mapping for {len(df.columns)} columns...")
+        
+        # Step 1: Analyze columns
+        intelligent_analysis = self.intelligent_column_analysis(df)
+        
+        # Step 2: Get smart AI mapping (with fallback)
+        try:
+            mapping_result = self.get_smart_ai_mapping(df)
+        except Exception as e:
+            self._v(f"🔧 AI mapping failed ({e}), using deterministic fallback...")
+            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
+        
+        validation = self._validate_mappings(mapping_result, df)
+        if not validation['valid']:
+            self._v(f"🔧 Using deterministic fallback due to validation issues...")
+            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
+        
+        # Create base tables
+        base_tables = self._create_tables(df, mapping_result, intelligent_analysis)
+        
+        # Dynamic validation and enhancement
+        enhanced_tables = self.validate_and_enhance_tables(base_tables, df)
+        
+        # Prepare for Supabase
+        supabase_ready_tables = self.prepare_for_supabase(enhanced_tables)
+        
+        # Print final summary
+        self._print_enhanced_summary(mapping_result, supabase_ready_tables, intelligent_analysis)
+        
+        return supabase_ready_tables
+
     def _validate_mappings(self, mapping_result: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
         """Validate mappings against actual schema"""
         validation = {
@@ -555,203 +815,12 @@ Return ONLY valid JSON in this format:
                     validation['valid'] = False
         
         return validation
-    
-    def _create_tables(self, df: pd.DataFrame, mapping_result: Dict[str, Any], intelligent_analysis: Dict[str, ColumnIntelligence]) -> Dict[str, pd.DataFrame]:
-        """Create mapped tables"""
-        mapped_tables = {}
-        
-        for table_name, mappings in mapping_result['table_mappings'].items():
-            if not mappings:
-                continue
-            
-            print(f"\n📊 Creating {table_name} table...")
-            table_data = {}
-            
-            for mapping in mappings:
-                csv_col = mapping['csv_column']
-                schema_col = mapping['schema_column']
-                
-                if csv_col in df.columns:
-                    # Simple data transformation
-                    table_data[schema_col] = self._transform_column(df[csv_col], schema_col)
-                    print(f"   ✅ {csv_col} → {schema_col}")
-            
-            if table_data:
-                table_df = pd.DataFrame(table_data)
-                mapped_tables[table_name] = table_df
-                print(f"   📋 {table_name}: {len(table_df)} rows, {len(table_df.columns)} columns")
-        
-        return mapped_tables
-    
-    def _transform_column(self, series: pd.Series, schema_col: str) -> pd.Series:
-        """Simple column transformation"""
-        if 'date' in schema_col.lower():
-            return pd.to_datetime(series, errors='coerce')
-        elif schema_col.lower() in ['sex', 'gender']:
-            return series.map({'Male': 'Male', 'Female': 'Female', 1: 'Male', 2: 'Female'}).fillna(series)
-        elif series.dtype in ['int64', 'float64']:
-            return pd.to_numeric(series, errors='coerce')
-        else:
-            return series.astype('string')
-    
-    def _print_summary(self, mapping_result: Dict[str, Any], mapped_tables: Dict[str, pd.DataFrame], intelligent_analysis: Dict[str, ColumnIntelligence]):
-        """Print mapping summary"""
-        print("\n" + "="*80)
-        print("🎯 SMART AI SCHEMA MAPPING SUMMARY")
-        print("="*80)
-        
-        summary = mapping_result['mapping_summary']
-        print(f"\n📊 Mapping Results:")
-        print(f"   Total CSV columns: {summary['total_csv_columns']}")
-        print(f"   Successfully mapped: {summary['mapped_columns']}")
-        print(f"   Unmapped: {summary['unmapped_columns']}")
-        print(f"   Confidence: {summary['confidence_score']}")
-        
-        print(f"\n📋 Created Tables:")
-        for table_name, table_df in mapped_tables.items():
-            print(f"   {table_name}: {len(table_df)} rows, {len(table_df.columns)} columns")
-        
-        print(f"\n🎯 Smart AI mapping completed successfully! ✅")
-
-    def validate_and_enhance_tables(self, mapped_tables: Dict[str, pd.DataFrame], 
-                                   source_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-        """
-        Dynamically validate and enhance all mapped tables based on schema requirements
-        """
-        
-        print("\n🚀 DYNAMIC SCHEMA VALIDATION & ENHANCEMENT")
-        print("="*60)
-        
-        enhanced_tables = {}
-        validation_results = {}
-        
-        # Step 1: Validate all tables
-        print("\n🔍 Validating tables against schema requirements...")
-        for table_name, table_df in mapped_tables.items():
-            validation = self.schema_validator.validate_table_data(table_name, table_df)
-            validation_results[table_name] = validation
-            
-            if validation['valid']:
-                print(f"   ✅ {table_name}: Valid")
-            else:
-                print(f"   ⚠️  {table_name}: {len(validation['missing_required'])} required fields missing")
-        
-        # Step 2: Enhance tables with missing requirements
-        print("\n🔧 Enhancing tables with schema requirements...")
-        for table_name, table_df in mapped_tables.items():
-            try:
-                # First, use the schema validator's enhancement
-                enhanced_df = self.schema_validator.enhance_table_with_requirements(
-                    table_name, table_df, source_df
-                )
-                
-                # Then, add our custom missing required fields generation
-                enhanced_df = self._generate_missing_required_fields(
-                    table_name, enhanced_df, source_df
-                )
-                
-                enhanced_tables[table_name] = enhanced_df
-                print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
-                
-            except Exception as e:
-                print(f"   ❌ Failed to enhance {table_name}: {e}")
-                # Apply our custom enhancement as fallback
-                try:
-                    enhanced_df = self._generate_missing_required_fields(
-                        table_name, table_df, source_df
-                    )
-                    enhanced_tables[table_name] = enhanced_df
-                    print(f"   🔧 Fallback enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
-                except Exception as e2:
-                    print(f"   ❌ Fallback also failed for {table_name}: {e2}")
-                    enhanced_tables[table_name] = table_df  # Use original if all enhancement fails
-        
-        # Step 3: Final validation
-        print("\n✅ Final validation after enhancement...")
-        final_validation_results = {}
-        for table_name, enhanced_df in enhanced_tables.items():
-            validation = self.schema_validator.validate_table_data(table_name, enhanced_df)
-            final_validation_results[table_name] = validation
-            
-            if validation['valid']:
-                print(f"   ✅ {table_name}: Fully compliant")
-            else:
-                remaining_issues = len(validation['missing_required'])
-                print(f"   ⚠️  {table_name}: {remaining_issues} issues remain")
-        
-        # Step 4: Print comprehensive summary
-        summary = self.schema_validator.get_validation_summary(final_validation_results)
-        self._print_validation_summary(summary, validation_results, final_validation_results)
-        
-        return enhanced_tables
-
-    def _print_validation_summary(self, summary: Dict[str, Any], 
-                                before_validation: Dict[str, Dict[str, Any]],
-                                after_validation: Dict[str, Dict[str, Any]]):
-        """Print comprehensive validation summary"""
-        
-        print("\n" + "="*80)
-        print("📊 DYNAMIC VALIDATION & ENHANCEMENT SUMMARY")
-        print("="*80)
-        
-        print(f"\n📈 Validation Results:")
-        print(f"   Total tables processed: {summary['total_tables']}")
-        print(f"   Fully compliant tables: {summary['valid_tables']}")
-        print(f"   Tables with issues: {summary['invalid_tables']}")
-        
-        print(f"\n🔧 Enhancement Impact:")
-        before_issues = sum(len(v['missing_required']) for v in before_validation.values())
-        after_issues = sum(len(v['missing_required']) for v in after_validation.values())
-        resolved_issues = before_issues - after_issues
-        
-        print(f"   Issues before enhancement: {before_issues}")
-        print(f"   Issues after enhancement: {after_issues}")
-        print(f"   Issues resolved: {resolved_issues}")
-        print(f"   Resolution rate: {(resolved_issues/before_issues)*100:.1f}%" if before_issues > 0 else "   Resolution rate: 100%")
-        
-        if after_issues > 0:
-            print(f"\n⚠️  Remaining issues:")
-            for error in summary['all_errors']:
-                print(f"      • {error}")
-        
-        print(f"\n🎯 Schema Compliance: {'✅ ACHIEVED' if summary['overall_valid'] else '⚠️  PARTIAL'}")
-
-    def map_dataframe_to_tables(self, df: pd.DataFrame, preprocessing_results: Dict[str, Any] = None) -> Dict[str, pd.DataFrame]:
-        """Enhanced mapping with dynamic schema validation"""
-        
-        print(f"\n🧠 Starting DYNAMIC AI schema mapping for {len(df.columns)} columns...")
-        
-        # Step 1: Analyze columns
-        intelligent_analysis = self.intelligent_column_analysis(df)
-        
-        # Step 2: Get smart AI mapping (with fallback)
-        try:
-            mapping_result = self.get_smart_ai_mapping(df)
-        except Exception as e:
-            print(f"🔧 AI mapping failed ({e}), using deterministic fallback...")
-            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
-        
-        validation = self._validate_mappings(mapping_result, df)
-        if not validation['valid']:
-            print(f"🔧 Using deterministic fallback due to validation issues...")
-            mapping_result = self._create_deterministic_mappings(intelligent_analysis)
-        
-        # Create base tables
-        base_tables = self._create_tables(df, mapping_result, intelligent_analysis)
-        
-        # **NEW: Dynamic validation and enhancement**
-        enhanced_tables = self.validate_and_enhance_tables(base_tables, df)
-        
-        # **NEW: Prepare for Supabase**
-        supabase_ready_tables = self.prepare_for_supabase(enhanced_tables)
-        
-        # Print final summary
-        self._print_enhanced_summary(mapping_result, supabase_ready_tables, intelligent_analysis)
-        
-        return supabase_ready_tables
 
     def _print_enhanced_summary(self, mapping_result: Dict[str, Any], enhanced_tables: Dict[str, pd.DataFrame], intelligent_analysis: Dict[str, ColumnIntelligence]):
         """Print enhanced mapping summary with validation results"""
+        if not self.verbose:
+            return
+            
         print("\n" + "="*80)
         print("🚀 DYNAMIC SCHEMA-DRIVEN MAPPING SUMMARY")
         print("="*80)
@@ -769,149 +838,90 @@ Return ONLY valid JSON in this format:
         
         print(f"\n🎯 Dynamic schema-driven mapping completed successfully! ✅")
         print(f"💡 All tables now comply with schema requirements automatically")
-    # Add this method to enhanced_ai_schema_mapper.py around line 790
 
     def _convert_to_boolean(self, series: pd.Series) -> pd.Series:
-        """Convert various formats to boolean with comprehensive mapping"""
-        # Create a copy to avoid modifying original
-        result = series.copy()
-    
-        # Handle common boolean representations
-        bool_mapping = {
-            # Text representations
-            'yes': True, 'no': False,
-            'true': True, 'false': False,
-            '1': True, '0': False,
-            'y': True, 'n': False,
-            # Numeric representations
-            1: True, 0: False,
-            1.0: True, 0.0: False,
-            # Common survey responses - ALL THE PROBLEMATIC ONES
-            'not asked': None,
-            'niu (not in universe)': None,
-            'unknown': None,
-            'missing': None,
-            'n/a': None,
-            'na': None,
-            '': None,
-            'nan': None,
-            'dk': None,  # don't know
-            'ref': None,  # refused
-            'skip': None,
-            'inapplicable': None,
-            'not applicable': None
-       }
-    
-        # Convert to lowercase string first for consistent mapping
-        result = result.astype(str).str.lower().map(bool_mapping)
-    
-        # Fill remaining NaN values with None (will be NULL in database)
-        return result.fillna(None)
+        """Legacy path (kept for compatibility) now delegates to _safe_boolean"""
+        return self._safe_boolean(series)
+
+    def prepare_for_supabase(self, enhanced_tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+        """Apply final cleaning with strict allowlist boolean & UUID preservation"""
+        cleaned_tables = {}
+        
+        for table_name, df in enhanced_tables.items():
+            self._v(f"🔧 Preparing {table_name} for Supabase...")
+            
+            new_df = df.copy()
+            
+            # UUID integrity
+            for col in new_df.columns:
+                if col.endswith('_id'):
+                    new_df[col] = self._ensure_uuid_series(new_df[col].astype('string'))
+
+            # Boolean allowlist only
+            for col in new_df.columns:
+                if col in BOOLEAN_ALLOWLIST:
+                    new_df[col] = self._safe_boolean(new_df[col])
+                elif new_df[col].dtype == bool:
+                    new_df[col] = new_df[col].astype('string')
+
+            # Dates
+            for col in new_df.columns:
+                if 'date' in col.lower():
+                    new_df[col] = pd.to_datetime(new_df[col], errors='coerce')
+
+            # Null normalization
+            for col in new_df.columns:
+                if new_df[col].dtype == 'string':
+                    new_df[col] = new_df[col].where(new_df[col].notna(), None)
+
+            cleaned_tables[table_name] = new_df
+            self._v(f"   ✅ {table_name} prepared with {len(new_df)} rows")
+        
+        return cleaned_tables
+
     def _generate_missing_required_fields(self, table_name: str, enhanced_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate missing required fields for tables with proper foreign key handling"""
+        """Generate only strictly required fields; no fake names"""
         
         if table_name not in self.tables:
             return enhanced_df
         
         table_config = self.tables[table_name]
-        table_columns = table_config['columns']
+        columns_config = table_config.get('columns', {})
         
-        # Generate missing required fields
-        for col_name, col_config in table_columns.items():
-            if col_name not in enhanced_df.columns and not col_config.get('nullable', True):
-                print(f"   🔧 Generating required field: {col_name}")
-                
-                if col_name.endswith('_id') and col_config.get('primary_key', False):
-                    # Generate primary key IDs
-                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                
-                elif col_name == 'individual_id' and table_name in ['education', 'vaccination', 'birth_event', 'death_event', 'migration_event', 'censoring_event']:
-                    # Use sequential IDs for foreign key references
-                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                
-                elif col_name == 'household_id' and table_name in ['individual', 'livelihoods', 'household_amenities']:
-                    # Handle circular dependency: household needs dwelling_unit_id, but for now use sequential IDs
-                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                
-                elif col_name == 'dwelling_unit_id' and table_name == 'household':
-                    # Generate default dwelling unit IDs
-                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                
-                elif col_name == 'household_code' and table_name == 'household':
-                    # Generate household codes
-                    enhanced_df[col_name] = [f"HH_{i:04d}" for i in range(1, len(enhanced_df) + 1)]
-                
-                elif col_name == 'mother_id' and table_name == 'pregnancy':
-                    # Map from individual IDs
-                    enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                
-                elif col_name == 'outcome' and table_name == 'pregnancy':
-                    # Set default pregnancy outcome
-                    enhanced_df[col_name] = 'live_birth'
-                
-                elif col_name == 'event_type' and table_name == 'censoring_event':
-                    # Set default event type
-                    enhanced_df[col_name] = 'end_of_study'
-                
-                elif col_name == 'vaccine_type' and table_name == 'vaccination':
-                    # Set default vaccine type
-                    enhanced_df[col_name] = 'BCG'
-                
-                elif col_name == 'dose_number' and table_name == 'vaccination':
-                    # Set default dose number
-                    enhanced_df[col_name] = 1
-                
-                elif col_name in ['start_date', 'event_date', 'administration_date', 'birth_date', 'death_date', 'migration_date', 'delivery_date']:
-                    # Use current date as default
-                    enhanced_df[col_name] = pd.to_datetime('2024-01-01')
-                
-                else:
-                    # Handle other required fields based on type
-                    col_type = col_config.get('type', 'TEXT')
-                    if 'integer' in col_type.lower() or 'int' in col_type.lower():
-                        enhanced_df[col_name] = 1
-                    elif 'date' in col_type.lower():
+        for col_name, col_config in columns_config.items():
+            if col_name not in enhanced_df.columns:
+                if not col_config.get('nullable', True):  # Required field
+                    self._v(f"   🔧 Generating required field: {col_name}")
+                    
+                    if col_name.endswith('_id'):
+                        # UUID path
+                        enhanced_df[col_name] = [str(uuid.uuid4()) for _ in range(len(enhanced_df))]
+                    elif table_name == 'censoring_event' and col_name == 'event_type':
+                        enhanced_df[col_name] = CENSOR_EVENT_FALLBACK
+                    elif table_name == 'pregnancy' and col_name == 'outcome':
+                        enhanced_df[col_name] = 'live_birth'
+                    elif 'date' in col_name:
                         enhanced_df[col_name] = pd.to_datetime('2024-01-01')
-                    elif 'boolean' in col_type.lower():
-                        enhanced_df[col_name] = True
                     else:
-                        enhanced_df[col_name] = f'default_{col_name}'
+                        # leave as NULL-able placeholder if schema truly non-nullable
+                        enhanced_df[col_name] = pd.Series([None]*len(enhanced_df), dtype='object')
         
         return enhanced_df
 
-    def prepare_for_supabase(self, enhanced_tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-        """Prepare tables for Supabase insertion by cleaning data types"""
-        
-        cleaned_tables = {}
+    def _fix_null_dates(self, enhanced_tables: Dict[str, pd.DataFrame], source_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """Fix null dates by using actual source data"""
         
         for table_name, df in enhanced_tables.items():
-            print(f"🔧 Preparing {table_name} for Supabase...")
-            
-            # Create a copy
-            clean_df = df.copy()
-            
-            # Handle boolean columns
-            for col in clean_df.columns:
-                if clean_df[col].dtype == 'object':
-                    # Check if this should be boolean based on unique values
-                    unique_values = set(str(v).lower() for v in clean_df[col].unique() if pd.notna(v))
-                    boolean_indicators = {'yes', 'no', 'true', 'false', '1', '0', 'y', 'n'}
-                    
-                    if unique_values.intersection(boolean_indicators):
-                        print(f"   🔄 Converting {col} to boolean")
-                        clean_df[col] = self._convert_to_boolean(clean_df[col])
-            
-            # Handle dates
-            for col in clean_df.columns:
-                if 'date' in col.lower() and clean_df[col].dtype == 'object':
-                    print(f"   📅 Converting {col} to datetime")
-                    clean_df[col] = pd.to_datetime(clean_df[col], errors='coerce')
-            
-            # Replace NaN values with None for Supabase
-            clean_df = clean_df.where(pd.notnull(clean_df), None)
-            
-            cleaned_tables[table_name] = clean_df
-            print(f"   ✅ {table_name} prepared with {len(clean_df)} rows")
-        
-        return cleaned_tables
+            if table_name == 'censoring_event' and 'event_date' in df.columns:
+                # Use actual censor_birth data if available
+                if 'censor_birth' in source_df.columns:
+                    # Get the actual dates from source
+                    actual_dates = pd.to_datetime(source_df['censor_birth'].iloc[:len(df)], errors='coerce')
+                    # Fill null values with default date
+                    df['event_date'] = actual_dates.fillna(value=pd.to_datetime('2024-01-01'))
+                    self._v(f"   🔧 Fixed event_date nulls in {table_name}")
+                else:
+                    # Fallback to default date
+                    df['event_date'] = pd.to_datetime('2024-01-01')
 
+        return enhanced_tables

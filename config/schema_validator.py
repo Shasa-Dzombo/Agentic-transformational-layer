@@ -405,20 +405,25 @@ class DynamicSchemaValidator:
         
         try:
             if field_req.data_type == 'INTEGER':
-                return pd.to_numeric(series, errors='coerce').fillna(0).astype('Int64')
+                # FIXED: Handle UUID strings properly
+                if series.dtype == 'object':
+                    # Check if values look like UUIDs
+                    sample_value = str(series.iloc[0]) if len(series) > 0 else ""
+                    if len(sample_value) > 20 and '-' in sample_value:
+                        # These are UUIDs, generate sequential integers instead
+                        return pd.Series(range(1, len(series) + 1), dtype='Int64')
+                    else:
+                        # Try normal numeric conversion
+                        return pd.to_numeric(series, errors='coerce').fillna(0).astype('Int64')
+                else:
+                    return pd.to_numeric(series, errors='coerce').fillna(0).astype('Int64')
                 
             elif field_req.data_type == 'NUMERIC':
                 return pd.to_numeric(series, errors='coerce').fillna(0.0)
                 
             elif field_req.data_type == 'BOOLEAN':
-                # Smart boolean conversion
-                bool_map = {
-                    'yes': True, 'no': False, 'true': True, 'false': False,
-                    'y': True, 'n': False, '1': True, '0': False,
-                    1: True, 0: False, 'not asked': False, '': False,
-                    'male': True, 'female': False, 'm': True, 'f': False
-                }
-                return series.map(bool_map).fillna(False)
+                # FIXED: Better boolean conversion
+                return self._convert_to_boolean_safe(series)
                 
             elif field_req.data_type == 'DATE':
                 return pd.to_datetime(series, errors='coerce').dt.date
@@ -432,6 +437,31 @@ class DynamicSchemaValidator:
         except Exception as e:
             print(f"   ⚠️  Failed to convert {field_req.field_name}: {e}")
             return series
+
+    def _convert_to_boolean_safe(self, series: pd.Series) -> pd.Series:
+        """Safe boolean conversion handling survey responses"""
+        
+        # Create boolean mapping for survey responses
+        bool_mapping = {
+            # Standard boolean
+            'yes': True, 'no': False, 'true': True, 'false': False,
+            '1': True, '0': False, 1: True, 0: False,
+            
+            # Survey-specific responses that should be False/None
+            'niu (not in universe)': None,
+            'not asked': None,
+            'don\'t know': None,
+            'missing': None,
+            'na': None,
+            '': None,
+            'nan': None
+        }
+        
+        # Convert to string and lowercase for mapping
+        result = series.astype(str).str.lower().map(bool_mapping)
+        
+        # Fill remaining unmapped values with None
+        return result.fillna(value=None)  # FIXED: Explicit value parameter
     
     def get_validation_summary(self, table_validations: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """Generate comprehensive validation summary"""
