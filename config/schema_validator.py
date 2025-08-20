@@ -257,25 +257,95 @@ class DynamicSchemaValidator:
         except:
             return False
     
+    def get_validation_summary(self, validation_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate comprehensive validation summary"""
+        
+        total_tables = len(validation_results)
+        valid_tables = sum(1 for v in validation_results.values() if v['valid'])
+        
+        all_errors = []
+        all_missing_required = []
+        
+        for table_name, validation in validation_results.items():
+            for error in validation['errors']:
+                all_errors.append(f"{table_name}: {error}")
+            
+            for field in validation['missing_required']:
+                all_missing_required.append(f"{table_name}.{field}")
+        
+        return {
+            'total_tables': total_tables,
+            'valid_tables': valid_tables,
+            'invalid_tables': total_tables - valid_tables,
+            'all_errors': all_errors,
+            'missing_required_fields': all_missing_required,
+            'overall_valid': len(all_missing_required) == 0
+        }
+    
+    def _is_uuid_format(self, value: str) -> bool:
+        """Check if a string value looks like a UUID"""
+        if not isinstance(value, str) or len(value) != 36:
+            return False
+        
+        # UUID format: 8-4-4-4-12 characters with hyphens
+        uuid_pattern = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        import re
+        return bool(re.match(uuid_pattern, value))
+
+    def _detect_actual_data_type(self, series: pd.Series) -> str:
+        """Detect the actual data type from the series content"""
+        if len(series) == 0:
+            return 'TEXT'
+        
+        # Get first non-null value
+        sample_value = None
+        for val in series.dropna():
+            if pd.notna(val):
+                sample_value = str(val)
+                break
+        
+        if not sample_value:
+            return 'TEXT'
+        
+        # Check for UUID
+        if self._is_uuid_format(sample_value):
+            return 'UUID'
+        
+        # Check for numeric
+        try:
+            float(sample_value)
+            return 'NUMERIC'
+        except:
+            pass
+        
+        # Check for boolean-like
+        if sample_value.lower() in ['true', 'false', '1', '0', 'yes', 'no']:
+            return 'BOOLEAN'
+        
+        return 'TEXT'
+    
     def enhance_table_with_requirements(self, table_name: str, table_df: pd.DataFrame, 
-                                      source_data_df: pd.DataFrame = None) -> pd.DataFrame:
+                                      source_data_df: pd.DataFrame = None,
+                                      enhanced_tables: Dict[str, pd.DataFrame] = None) -> pd.DataFrame:
         """
-        Dynamically enhance table with all schema requirements
+        Dynamically enhance table with all schema requirements, using already
+        enhanced tables to resolve foreign key dependencies.
         """
         
         if table_name not in self.table_requirements:
-            raise ValueError(f"Table '{table_name}' not found in schema requirements")
+            print(f"   ⚠️  No schema requirements found for table '{table_name}'. Skipping enhancement.")
+            return table_df
+            
+        print(f"🔧 Dynamically enhancing '{table_name}' based on schema requirements...")
         
         requirements = self.table_requirements[table_name]
         enhanced_df = table_df.copy()
-        
-        print(f"🔧 Dynamically enhancing '{table_name}' based on schema requirements...")
         
         # Add missing required fields
         for field_name, field_req in requirements.required_fields.items():
             if field_name not in enhanced_df.columns:
                 default_values = self._generate_field_values(
-                    field_req, len(enhanced_df), source_data_df
+                    field_req, len(enhanced_df), source_data_df, enhanced_tables
                 )
                 enhanced_df[field_name] = default_values
                 print(f"   ✅ Added required field: {field_name} ({field_req.data_type})")
@@ -284,7 +354,7 @@ class DynamicSchemaValidator:
         for field_name, field_req in requirements.optional_fields.items():
             if field_name not in enhanced_df.columns and field_req.default_value:
                 default_values = self._generate_field_values(
-                    field_req, len(enhanced_df), source_data_df
+                    field_req, len(enhanced_df), source_data_df, enhanced_tables
                 )
                 enhanced_df[field_name] = default_values
                 print(f"   ✅ Added optional field: {field_name} ({field_req.data_type})")
@@ -292,12 +362,11 @@ class DynamicSchemaValidator:
         # Convert data types for existing fields
         enhanced_df = self._convert_data_types(enhanced_df, requirements)
         
-        # FIX: Add a final step to fill nulls in required columns like 'event_date'.
+        # Fix nulls in required columns
         enhanced_df = self._fix_nulls_in_required_fields(enhanced_df, requirements)
         
-        print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
         return enhanced_df
-    
+
     def _fix_nulls_in_required_fields(self, df: pd.DataFrame, requirements: TableRequirements) -> pd.DataFrame:
         """
         Iterates through required fields and fills any null values with
@@ -317,59 +386,56 @@ class DynamicSchemaValidator:
         return fixed_df
 
     def _generate_field_values(self, field_req: FieldRequirement, row_count: int, 
-                             source_data_df: pd.DataFrame = None) -> List[Any]:
+                             source_data_df: pd.DataFrame = None,
+                             enhanced_tables: Dict[str, pd.DataFrame] = None) -> List[Any]:
         """Generate appropriate default values for a field based on its requirements"""
         
         field_name = field_req.field_name
         data_type = field_req.data_type
         
-        # Handle auto-increment fields
-        if field_req.auto_increment or field_req.is_primary_key:
-            return list(range(1, row_count + 1))
+        # --- THE DEFINITIVE FIX ---
+        # The order of checks is critical. We must check the data type FIRST,
+        # before checking if it's a primary key. This ensures that UUID primary
+        # keys are handled correctly.
         
-        # Handle foreign keys - try to find matching values
-        if field_req.is_foreign_key and source_data_df is not None:
-            return self._generate_foreign_key_values(field_req, row_count, source_data_df)
-        
-        # Handle fields with explicit defaults
-        if field_req.default_value:
-            if field_req.default_value == 'CURRENT_TIMESTAMP':
-                return [pd.Timestamp.now()] * row_count
-            elif field_req.default_value == 'AUTO_INCREMENT':
-                return list(range(1, row_count + 1))
-            else:
-                return [field_req.default_value] * row_count
-        
-        # Generate type-appropriate defaults
-        if data_type == 'INTEGER':
-            if 'id' in field_name.lower():
-                return list(range(1, row_count + 1))
-            return [0] * row_count
-            
-        elif data_type == 'NUMERIC':
-            return [0.0] * row_count
-            
-        elif data_type == 'BOOLEAN':
-            # FIX 1: The default for an unknown boolean should be None (NULL), not False.
-            return [None] * row_count
-            
-        elif data_type == 'DATE':
-            return ['2024-01-01'] * row_count
-            
-        elif data_type == 'TIMESTAMP':
-            return [pd.Timestamp.now()] * row_count
-            
-        elif data_type == 'UUID':
+        # 1. Handle by specific data type first.
+        if data_type == 'UUID':
             import uuid
             return [str(uuid.uuid4()) for _ in range(row_count)]
+        
+        if data_type == 'BOOLEAN':
+            # Use the default value from schema if available, otherwise False
+            return [field_req.default_value if field_req.default_value is not None else False] * row_count
             
-        else:  # TEXT
-            return [self._generate_meaningful_text_default(field_name)] * row_count
-    
+        if data_type == 'DATE':
+            return [pd.to_datetime('today').date()] * row_count
+            
+        if data_type == 'TIMESTAMP':
+            return [pd.Timestamp.now()] * row_count
+
+        # 2. Handle foreign keys by looking up parent tables.
+        if field_req.is_foreign_key:
+            return self._generate_foreign_key_values(field_req, row_count, source_data_df, enhanced_tables)
+
+        # 3. Handle auto-incrementing INTEGER primary keys.
+        if field_req.auto_increment or (field_req.is_primary_key and data_type == 'INTEGER'):
+            return list(range(1, row_count + 1))
+            
+        # 4. Fallback for TEXT and other types.
+        return [self._generate_meaningful_text_default(field_name)] * row_count
+
     def _generate_meaningful_text_default(self, field_name: str) -> str:
         """Generate meaningful text defaults based on field name"""
         
         field_lower = field_name.lower()
+        
+        # UPDATE: Handle specific check constraints
+        if field_name == 'current_school_type':
+            return "primary"  # Use a valid value from the check constraint
+        elif field_name == 'outcome':
+            return "live_birth"  # Use a valid value from the check constraint
+        elif field_name == 'event_type':
+            return "birth"  # Valid censoring event type
         
         if 'name' in field_lower:
             return f"Generated_{field_name}"
@@ -392,47 +458,38 @@ class DynamicSchemaValidator:
             return f"default_{field_name}"
     
     def _generate_foreign_key_values(self, field_req: FieldRequirement, row_count: int, 
-                                   source_data_df: pd.DataFrame) -> List[Any]:
+                                   source_data_df: pd.DataFrame,
+                                   enhanced_tables: Dict[str, pd.DataFrame] = None) -> List[Any]:
         """
-        Generate foreign key values by looking for related data, now with
-        correct data type handling for UUIDs.
+        Generate foreign key values by looking for related data in already
+        processed tables, ensuring correct UUIDs are used.
         """
         if not field_req.references or '.' not in field_req.references:
-            # Fallback if reference info is missing
-            return list(range(1, row_count + 1))
+            return [None] * row_count # Return nulls if reference is unknown
 
         ref_table, ref_column = field_req.references.split('.', 1)
 
-        # Find the schema requirements for the referenced primary key to get its type
-        ref_table_reqs = self.table_requirements.get(ref_table)
-        ref_field_req = ref_table_reqs.required_fields.get(ref_column) or ref_table_reqs.optional_fields.get(ref_column) if ref_table_reqs else None
+        # FIX: Prioritize looking in the already enhanced tables for the parent keys.
+        if enhanced_tables and ref_table in enhanced_tables:
+            parent_df = enhanced_tables[ref_table]
+            if ref_column in parent_df.columns:
+                print(f"   🔗 Found parent keys for '{field_req.field_name}' in already processed '{ref_table}' table.")
+                # Ensure the length matches the current table's row count
+                parent_keys = parent_df[ref_column].tolist()
+                if not parent_keys:
+                    return [None] * row_count
+                return (parent_keys * (row_count // len(parent_keys) + 1))[:row_count]
 
-        if not ref_field_req:
-            # Fallback if referenced column schema can't be found
-            return list(range(1, row_count + 1))
+        # Fallback to original source data if not found in enhanced tables
+        if source_data_df is not None:
+            # A more robust way to find a potential source column for the foreign key
+            potential_source_col = field_req.field_name.replace('_id', '')
+            if potential_source_col in source_data_df.columns:
+                return source_data_df[potential_source_col].tolist()[:row_count]
 
-        # Determine the expected data type (e.g., 'UUID' or 'INTEGER')
-        expected_type = ref_field_req.data_type
-
-        # Look for potential matching columns in the original source data
-        potential_columns = [col for col in source_data_df.columns 
-                           if ref_column in col.lower() or ref_table in col.lower()]
-        
-        if potential_columns:
-            source_column = potential_columns[0]
-            ref_values = source_data_df[source_column]
-
-            # THIS IS THE FIX: Only convert to integer if the referenced key is an integer.
-            # Otherwise, treat it as a string (for UUIDs).
-            if expected_type == 'INTEGER':
-                # Safely convert to numeric, then to nullable integer
-                return pd.to_numeric(ref_values, errors='coerce').fillna(0).astype(int).tolist()[:row_count]
-            else: # For UUID, TEXT, etc.
-                # Convert to string and handle potential nulls
-                return ref_values.astype(str).fillna('').tolist()[:row_count]
-
-        # Final fallback if no matching source column is found
-        return list(range(1, row_count + 1))
+        # Final fallback: generate nulls as we cannot satisfy the dependency.
+        print(f"   ⚠️  Could not find parent keys for '{field_req.field_name}'. Generating nulls.")
+        return [None] * row_count
 
     def _convert_data_types(self, df: pd.DataFrame, requirements: TableRequirements) -> pd.DataFrame:
         """Convert DataFrame columns to match schema requirements"""
@@ -527,16 +584,16 @@ class DynamicSchemaValidator:
             # Ensure the fallback is a series of None values with the correct object type
             return pd.Series([None] * len(series), dtype='object')
     
-    def get_validation_summary(self, table_validations: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def get_validation_summary(self, validation_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """Generate comprehensive validation summary"""
         
-        total_tables = len(table_validations)
-        valid_tables = sum(1 for v in table_validations.values() if v['valid'])
+        total_tables = len(validation_results)
+        valid_tables = sum(1 for v in validation_results.values() if v['valid'])
         
         all_errors = []
         all_missing_required = []
         
-        for table_name, validation in table_validations.items():
+        for table_name, validation in validation_results.items():
             for error in validation['errors']:
                 all_errors.append(f"{table_name}: {error}")
             

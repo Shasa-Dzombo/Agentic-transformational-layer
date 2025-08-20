@@ -534,6 +534,9 @@ Return ONLY valid JSON in this format:
         enhanced_tables = {}
         validation_results = {}
         
+        # Create a copy of the source_df to safely add new ID columns to it
+        source_df_with_ids = source_df.copy()
+        
         # Step 1: Validate all tables
         print("\n🔍 Validating tables against schema requirements...")
         for table_name, table_df in mapped_tables.items():
@@ -547,19 +550,34 @@ Return ONLY valid JSON in this format:
         
         # Step 2: Enhance tables with missing requirements using ONLY the validator
         print("\n🔧 Enhancing tables with schema requirements...")
+        
+        # FIX: This is the correct way to propagate generated IDs.
+        # We create a dictionary to hold newly created tables and pass it to the validator.
+        # The validator can then look up parent table IDs from this dictionary.
+        
+        # Process 'individual' table first to ensure UUIDs are generated.
+        if 'individual' in mapped_tables:
+            individual_df = mapped_tables['individual']
+            enhanced_tables['individual'] = self.schema_validator.enhance_table_with_requirements(
+                'individual', individual_df, source_df
+            )
+
+        # Process the rest of the tables
         for table_name, table_df in mapped_tables.items():
+            if table_name == 'individual':
+                continue # Already processed
+            
             try:
-                # The validator is now the single source of truth for enhancement.
+                # Pass the dictionary of already enhanced tables so the validator can find foreign keys.
                 enhanced_df = self.schema_validator.enhance_table_with_requirements(
-                    table_name, table_df, source_df
+                    table_name, table_df, source_df, enhanced_tables
                 )
                 enhanced_tables[table_name] = enhanced_df
-                print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
                 
             except Exception as e:
                 print(f"   ❌ Failed to enhance {table_name}: {e}")
-                enhanced_tables[table_name] = table_df  # Use original if enhancement fails
-        
+                enhanced_tables[table_name] = table_df
+
         # Step 3: Final validation
         print("\n✅ Final validation after enhancement...")
         final_validation_results = {}

@@ -2,14 +2,14 @@
   "database": {
     "name": "aphrc_hdss_db",
     "version": "1.0.0",
-    "last_updated": "2025-08-14",
+    "last_updated": "2025-08-20",
     "description": "HDSS database schema for Education, Amenities, and Livelihood modules at APHRC",
     "tables": {
       "birth_event": {
         "description": "Birth event data including location and attendant information",
         "columns": {
           "birth_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for birth id",
             "primary_key": true
@@ -63,7 +63,7 @@
         "description": "Death events including cause and autopsy status",
         "columns": {
           "death_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for death id",
             "primary_key": true
@@ -112,7 +112,7 @@
         "description": "Migration data capturing movement in, out, or within the site",
         "columns": {
           "migration_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for migration id",
             "primary_key": true
@@ -171,7 +171,7 @@
         "description": "Vaccination records per individual including vaccine type and dose",
         "columns": {
           "vaccination_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for vaccination id",
             "primary_key": true
@@ -225,7 +225,7 @@
         "description": "Pregnancy records for female individuals including outcome and delivery info",
         "columns": {
           "pregnancy_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for pregnancy id",
             "primary_key": true
@@ -304,7 +304,7 @@
         "description": "Tracking of censoring events like death, migration, or study end",
         "columns": {
           "censoring_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for censoring id",
             "primary_key": true
@@ -317,20 +317,20 @@
               "references": "individual.individual_id"
             }
           },
-          "event_type": {
-            "type": "character varying NOT NULL CHECK",
-            "nullable": false,
-            "description": "Event type"
+          "censoring_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Censoring type"
           },
-          "event_date": {
-            "type": "date NOT NULL",
-            "nullable": false,
-            "description": "Date of event"
+          "censoring_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of censoring"
           },
-          "comments": {
+          "reason": {
             "type": "text",
             "nullable": true,
-            "description": "Comments"
+            "description": "Reason for censoring"
           },
           "created_at": {
             "type": "timestamp with time zone DEFAULT now",
@@ -442,7 +442,7 @@
         "description": "Educational background and enrollment status of individuals",
         "columns": {
           "education_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for education id",
             "primary_key": true
@@ -511,13 +511,13 @@
         "description": "Household information including household code and head",
         "columns": {
           "household_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Reference to household",
             "primary_key": true
           },
           "dwelling_unit_id": {
-            "type": "integer NOT NULL",
+            "type": "uuid NOT NULL",
             "nullable": false,
             "description": "Identifier for dwelling unit id",
             "foreign_key": {
@@ -568,13 +568,13 @@
         "description": "Household-level data on water, sanitation, electricity, and waste disposal",
         "columns": {
           "amenity_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for amenity id",
             "primary_key": true
           },
           "household_id": {
-            "type": "integer NOT NULL UNIQUE",
+            "type": "uuid NOT NULL UNIQUE",
             "nullable": false,
             "description": "Reference to household",
             "foreign_key": {
@@ -622,13 +622,13 @@
         "description": "Information on income sources, shocks, and household income/expenditure",
         "columns": {
           "livelihood_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for livelihood id",
             "primary_key": true
           },
           "household_id": {
-            "type": "integer NOT NULL UNIQUE",
+            "type": "uuid NOT NULL UNIQUE",
             "nullable": false,
             "description": "Reference to household",
             "foreign_key": {
@@ -701,7 +701,7 @@
         "description": "",
         "columns": {
           "country_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for country id",
             "primary_key": true
@@ -742,13 +742,13 @@
         "description": "Research sites with geographic and administrative metadata",
         "columns": {
           "site_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Reference to site",
             "primary_key": true
           },
           "country_id": {
-            "type": "integer NOT NULL",
+            "type": "uuid NOT NULL",
             "nullable": false,
             "description": "Identifier for country id",
             "foreign_key": {
@@ -816,13 +816,13 @@
         "description": "Dwelling units within structures and their codes",
         "columns": {
           "dwelling_unit_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for dwelling unit id",
             "primary_key": true
           },
           "structure_id": {
-            "type": "integer NOT NULL",
+            "type": "uuid NOT NULL",
             "nullable": false,
             "description": "Identifier for structure id",
             "foreign_key": {
@@ -860,13 +860,13 @@
         "description": "Village-level geographic units within study sites",
         "columns": {
           "village_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for village id",
             "primary_key": true
           },
           "site_id": {
-            "type": "integer NOT NULL",
+            "type": "uuid NOT NULL",
             "nullable": false,
             "description": "Reference to site",
             "foreign_key": {
@@ -899,13 +899,13 @@
         "description": "Structures in villages representing physical housing units",
         "columns": {
           "structure_id": {
-            "type": "integer NOT NULL DEFAULT nextval",
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
             "nullable": false,
             "description": "Identifier for structure id",
             "primary_key": true
           },
           "village_id": {
-            "type": "integer NOT NULL",
+            "type": "uuid NOT NULL",
             "nullable": false,
             "description": "Identifier for village id",
             "foreign_key": {

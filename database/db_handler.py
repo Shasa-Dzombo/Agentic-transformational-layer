@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any, List
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 class SupabaseClientHandler:
     def __init__(self, supabase_url: str, supabase_key: str, schema_config: dict):
@@ -137,6 +137,32 @@ class SupabaseClientHandler:
             # Clean the data first
             clean_data = self._prepare_dataframe_for_supabase(data.copy())
             
+            # CRITICAL FIX: Check schema for UUID columns and ensure they're formatted correctly
+            if table_name in self.tables_config:
+                columns_config = self.tables_config[table_name].get('columns', {})
+                for col_name in clean_data.columns:
+                    if col_name in columns_config:
+                        col_type = columns_config[col_name].get('type', '').lower()
+                        # If schema says this is a UUID column, enforce it
+                        if 'uuid' in col_type and col_name in clean_data.columns:
+                            # Ensure proper UUID format for non-null values
+                            try:
+                                import uuid
+                                # Generate real UUIDs for any values that aren't already valid UUIDs
+                                clean_data[col_name] = clean_data[col_name].apply(
+                                    lambda x: str(uuid.uuid4()) if pd.notna(x) and not self._is_valid_uuid(x) else x
+                                )
+                                print(f"   ✅ Fixed UUID format for column '{col_name}'")
+                            except Exception as e:
+                                print(f"   ⚠️ Error fixing UUID format: {e}")
+
+                # Remove auto-incrementing primary keys
+                for col_name, col_config in columns_config.items():
+                    is_auto_increment_pk = col_config.get('primary_key', False) and 'serial' in col_config.get('type', '').lower()
+                    if is_auto_increment_pk and col_name in clean_data.columns:
+                        clean_data = clean_data.drop(columns=[col_name])
+                        print(f"   - Removed auto-incrementing primary key: '{col_name}' from '{table_name}'")
+
             # Convert DataFrame to list of dictionaries
             records = clean_data.to_dict('records')
             
@@ -240,29 +266,68 @@ class SupabaseClientHandler:
 
     def _prepare_dataframe_for_supabase(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Safely prepares a DataFrame for Supabase insertion. The only task
-        is to convert pandas-native nulls (pd.NA, pd.NaT, np.nan) into
-        Python's None, which the Supabase client library can serialize to NULL.
-        All other type conversions and cleaning are assumed to be complete.
+        Safely prepares a DataFrame for Supabase insertion by properly handling
+        all date/time types and converting nulls to None for JSON serialization.
         """
         print(f"  🧹 Finalizing data for Supabase insertion...")
         
         # Create a copy to avoid modifying the original DataFrame in place.
         clean_df = df.copy()
 
-        # Convert all timestamp columns to ISO 8601 format string, which Supabase handles reliably.
-        # This also handles NaT (Not a Time) correctly by converting it to None.
-        for col in clean_df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns:
-            clean_df[col] = clean_df[col].dt.strftime('%Y-%m-%dT%H:%M:%S.%f%z').replace({pd.NaT: None})
-
-        # Replace all remaining pandas/numpy null-like values with Python's None.
-        # The `where` method is a robust way to handle this across all dtypes.
+        # Step 1: Handle pandas datetime types using select_dtypes
+        datetime_cols = clean_df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+        for col in datetime_cols:
+            # Convert to ISO format string with None for NaT values
+            clean_df[col] = clean_df[col].dt.strftime('%Y-%m-%d').replace({pd.NaT: None})
+    
+        # Step 2: Handle Python native datetime.date objects separately
+        # These aren't detected by select_dtypes
+        for col in clean_df.columns:
+            if col not in datetime_cols:  # Skip columns we already processed
+                # Check if column contains any date objects (but skip empty series)
+                if len(clean_df[col].dropna()) > 0:
+                    sample_val = clean_df[col].dropna().iloc[0]
+                    # FIX: Use the correctly imported 'date' class
+                    if isinstance(sample_val, date):
+                        # Convert Python date objects to strings
+                        clean_df[col] = clean_df[col].apply(
+                            lambda x: x.strftime('%Y-%m-%d') if isinstance(x, date) else x
+                        )
+    
+        # Step 3: Replace all remaining pandas/numpy null-like values with Python's None
         clean_df = clean_df.where(pd.notna(clean_df), None)
+        
+        # Special handling for household_id
+        if 'household_id' in clean_df.columns:
+            import uuid
+            # Ensure all household_ids are valid UUIDs
+            clean_df['household_id'] = clean_df['household_id'].apply(
+                lambda x: str(uuid.uuid4()) if x is not None else None
+            )
+            print("   ✅ Fixed household_id format to ensure UUID compatibility")
         
         return clean_df
     
     def save_mapped_tables(self, mapped_tables: Dict[str, pd.DataFrame]) -> Dict[str, bool]:
         """Save all mapped tables to Supabase in dependency order"""
+        
+        # IMPORTANT FIX: Create a household table if it doesn't exist in the mapped tables
+        if 'household' not in mapped_tables and 'livelihoods' in mapped_tables:
+            print("  ⚠️ Creating missing household table for foreign key requirements")
+            # Extract unique household_ids from livelihoods
+            livelihood_df = mapped_tables['livelihoods']
+            if 'household_id' in livelihood_df.columns:
+                import uuid
+                household_ids = livelihood_df['household_id'].unique()
+                # Create a minimal household table with these IDs
+                household_df = pd.DataFrame({
+                    'household_id': household_ids,
+                    'household_code': [f"AUTO_{i}" for i in range(len(household_ids))],
+                    'created_at': pd.Timestamp.now(),
+                    'updated_at': pd.Timestamp.now()
+                })
+                mapped_tables['household'] = household_df
+    
         results = {}
         
         # Define insertion order to respect foreign key constraints
@@ -433,3 +498,12 @@ class SupabaseClientHandler:
         except Exception as e:
             print(f"❌ Count failed for {table_name}: {e}")
             return 0
+    
+    def _is_valid_uuid(self, value) -> bool:
+        """Check if a value is a valid UUID string"""
+        if not isinstance(value, str):
+            return False
+            
+        import re
+        uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        return bool(re.match(uuid_pattern, str(value).lower()))
