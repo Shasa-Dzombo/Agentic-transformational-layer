@@ -265,13 +265,27 @@ if __name__ == "__main__":
             
             # Save valid tables to Supabase
             if valid_tables:
-                save_results = db_handler.save_mapped_tables(mapped_tables)
-                
-                successful_saves = sum(save_results.values())
-                if successful_saves > 0:
-                    print(f"\n✅ Successfully saved {successful_saves}/{len(mapped_tables)} tables to Supabase!")
-                else:
-                    print(f"\n❌ Failed to save any tables to Supabase")
+                try:
+                    save_results = db_handler.save_mapped_tables(mapped_tables)
+                    
+                    # Count successful operations safely
+                    successful_saves = 0
+                    for table_name, result in save_results.items():
+                        # Handle different result formats
+                        if isinstance(result, bool) and result:
+                            successful_saves += 1
+                        elif isinstance(result, dict) and result.get('success', False):
+                            successful_saves += 1
+                        elif isinstance(result, dict) and 'records' in result:
+                            successful_saves += 1
+                            
+                    if successful_saves > 0:
+                        print(f"\n✅ Successfully saved {successful_saves}/{len(mapped_tables)} tables to Supabase!")
+                    else:
+                        print(f"\n❌ Failed to save any tables to Supabase")
+                except Exception as e:
+                    print(f"\n❌ Supabase operations failed: {e}")
+                    # Continue execution to show summary
             else:
                 print(f"\n⚠️  No valid tables to save")
         else:

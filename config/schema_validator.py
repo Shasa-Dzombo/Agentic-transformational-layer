@@ -429,29 +429,25 @@ class DynamicSchemaValidator:
         
         field_lower = field_name.lower()
         
-        # UPDATE: Handle specific check constraints
+        # FIX: Use exact values that match the check constraints
         if field_name == 'current_school_type':
-            return "primary"  # Use a valid value from the check constraint
+            # Must be one of: 'Public', 'Private', 'Religious', 'Community', 'Other'
+            return "Public"  # Valid value that meets the check constraint
         elif field_name == 'outcome':
-            return "live_birth"  # Use a valid value from the check constraint
+            # Must be one of: 'Live birth', 'Stillbirth', 'Miscarriage', 'Abortion', 'Ongoing'
+            return "Live birth"  # Valid value with correct capitalization
         elif field_name == 'event_type':
             return "birth"  # Valid censoring event type
         
+        # Other field defaults remain the same
         if 'name' in field_lower:
             return f"Generated_{field_name}"
         elif 'code' in field_lower:
             return f"CODE_{int(pd.Timestamp.now().timestamp())}"
         elif 'status' in field_lower:
             return "active"
-        
-        # FIX: Generate valid defaults that pass database CHECK constraints.
-        elif field_name == 'event_type':
-            return "birth" # A valid default for censoring_event.event_type
-        elif field_name == 'outcome':
-            return "live_birth" # A valid default for pregnancy.outcome
-            
-        elif 'type' in field_lower:
-            return "default"
+        elif 'type' in field_lower and field_name != 'current_school_type':  # Skip if already handled
+            return "Other"  # Safe default for most type fields
         elif 'description' in field_lower:
             return "System generated"
         else:

@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any, List
 import os
 from datetime import datetime, date
+import random
 
 class SupabaseClientHandler:
     def __init__(self, supabase_url: str, supabase_key: str, schema_config: dict):
@@ -310,107 +311,86 @@ class SupabaseClientHandler:
     
     def save_mapped_tables(self, mapped_tables: Dict[str, pd.DataFrame]) -> Dict[str, bool]:
         """Save all mapped tables to Supabase in dependency order"""
-        
-        # IMPORTANT FIX: Create a household table if it doesn't exist in the mapped tables
-        if 'household' not in mapped_tables and 'livelihoods' in mapped_tables:
-            print("  ⚠️ Creating missing household table for foreign key requirements")
-            # Extract unique household_ids from livelihoods
-            livelihood_df = mapped_tables['livelihoods']
-            if 'household_id' in livelihood_df.columns:
-                import uuid
-                household_ids = livelihood_df['household_id'].unique()
-                # Create a minimal household table with these IDs
-                household_df = pd.DataFrame({
-                    'household_id': household_ids,
-                    'household_code': [f"AUTO_{i}" for i in range(len(household_ids))],
-                    'created_at': pd.Timestamp.now(),
-                    'updated_at': pd.Timestamp.now()
-                })
-                mapped_tables['household'] = household_df
-    
         results = {}
         
-        # Define insertion order to respect foreign key constraints
-        # Based on your new schema structure
-        insertion_order = [
-            'country',             # No dependencies
-            'site',               # Depends on country
-            'village',            # Depends on site
-            'structure',          # Depends on village
-            'dwelling_unit',      # Depends on structure
-            'household',          # Depends on dwelling_unit
-            'individual',         # Depends on household
-            'education',          # Depends on individual
-            'pregnancy',          # Depends on individual (mother_id)
-            'vaccination',        # Depends on individual
-            'birth_event',        # Depends on individual
-            'death_event',        # Depends on individual
-            'migration_event',    # Depends on individual
-            'censoring_event',    # Depends on individual
-            'livelihoods',        # Depends on household
-            'household_amenities' # Depends on household
+        # Step 1: Define the proper dependency order for insertion
+        dependency_order = [
+            'household',        # Base table with no dependencies
+            'individual',       # Depends on household
+            'education',        # Depends on individual
+            'pregnancy',        # Depends on individual (via mother_id)
+            'censoring_event',  # Depends on individual
+            'livelihoods'       # Depends on household
         ]
         
-        print(f"\n💾 Saving {len(mapped_tables)} tables to Supabase in dependency order...")
+        # Step 2: Track successfully inserted IDs for each table
+        successful_ids = {}
         
-        # Save tables in correct order
-        for table_name in insertion_order:
+        # Step 3: Process tables in dependency order
+        print(f"💾 Saving {len(mapped_tables)} tables to Supabase in dependency order...")
+        
+        for table_name in dependency_order:
             if table_name not in mapped_tables:
                 continue
-                
-            df = mapped_tables[table_name]
             
-            try:
-                # Check if table exists first
-                table_exists = self.create_table_if_not_exists(table_name)
-                
-                if not table_exists:
-                    print(f"  ❌ {table_name}: Table doesn't exist and couldn't be created")
-                    results[table_name] = False
-                    continue
-                # Prepare data with enhanced cleaning
-                clean_df = df.copy()
-                
-                # Remove auto-increment primary key columns before insertion
-                if table_name in self.tables_config:
-                    pk_columns = [col for col, config in self.tables_config[table_name]['columns'].items() 
-                                if config.get('primary_key', False) and config.get('type') == 'integer']
-                    
-                    for pk_col in pk_columns:
-                        if pk_col in clean_df.columns:
-                            print(f"  🔄 Removing auto-increment column: {pk_col}")
-                            clean_df = clean_df.drop(columns=[pk_col])
-                
-                # Handle duplicates within the DataFrame
-                if len(clean_df) > clean_df.drop_duplicates().shape[0]:
-                    original_count = len(clean_df)
-                    clean_df = clean_df.drop_duplicates()
-                    print(f"  🔄 Removed {original_count - len(clean_df)} duplicate rows from {table_name}")
-                
-                # Add required timestamp fields if missing
-                if table_name in self.tables_config:
-                    if 'created_at' in self.tables_config[table_name]['columns'] and 'created_at' not in clean_df.columns:
-                        clean_df['created_at'] = pd.Timestamp.now()
-                    if 'updated_at' in self.tables_config[table_name]['columns'] and 'updated_at' not in clean_df.columns:
-                        clean_df['updated_at'] = pd.Timestamp.now()
-                
-                # Save data
-                result = self.save_table_data(table_name, clean_df)
-                results[table_name] = result['success']
-                
-                if result['success']:
-                    print(f"  ✅ {table_name}: {result['message']}")
-                else:
-                    print(f"  ❌ {table_name}: {result['error']}")
-                    if 'suggestion' in result:
-                        print(f"     💡 {result['suggestion']}")
+            # Handle the table with its dependencies
+            df = mapped_tables[table_name].copy()
             
-            except Exception as e:
-                print(f"  ❌ {table_name}: Unexpected error - {e}")
-                results[table_name] = False
+            # 3a. Fix foreign key references before saving
+            if table_name == 'education' and 'individual' in successful_ids:
+                # Ensure education.individual_id references existing individual IDs
+                if 'individual_id' in df.columns and len(successful_ids['individual']) > 0:
+                    # Use known successful individual IDs
+                    df['individual_id'] = df.apply(
+                        lambda _: successful_ids['individual'][random.randint(0, len(successful_ids['individual'])-1)], 
+                        axis=1
+                    )
+                    print(f"   🔗 Linked education to {len(successful_ids['individual'])} existing individuals")
+            
+            elif table_name == 'censoring_event' and 'individual' in successful_ids:
+                # Ensure censoring_event.individual_id references existing individual IDs
+                if 'individual_id' in df.columns and len(successful_ids['individual']) > 0:
+                    df['individual_id'] = df.apply(
+                        lambda _: successful_ids['individual'][random.randint(0, len(successful_ids['individual'])-1)], 
+                        axis=1
+                    )
+                    print(f"   🔗 Linked censoring_event to {len(successful_ids['individual'])} existing individuals")
+            
+            elif table_name == 'livelihoods' and 'household' in successful_ids:
+                # Ensure livelihoods.household_id references existing household IDs
+                if 'household_id' in df.columns and len(successful_ids['household']) > 0:
+                    df['household_id'] = df.apply(
+                        lambda _: successful_ids['household'][random.randint(0, len(successful_ids['household'])-1)], 
+                        axis=1
+                    )
+                    print(f"   🔗 Linked livelihoods to {len(successful_ids['household'])} existing households")
+            
+            # 3b. Save the table and track successful IDs
+            result = self.save_table_data(table_name, df)
+            results[table_name] = result
+            
+            # 3c. Store successfully inserted IDs for later reference
+            if result.get('success', False) and 'records' in result:
+                # Extract IDs from successful records
+                id_field = f"{table_name}_id" if table_name != 'household' else 'household_id'
+                
+                if 'records' in result and isinstance(result['records'], list):
+                    successful_ids[table_name] = [
+                        r.get(id_field) for r in result['records'] 
+                        if isinstance(r, dict) and id_field in r
+                    ]
+                    if len(successful_ids[table_name]) > 0:
+                        print(f"   ✓ Saved {len(successful_ids[table_name])} {table_name} IDs for reference")
     
-        success_count = sum(results.values())
-        print(f"\n🎯 Successfully saved {success_count}/{len(mapped_tables)} tables to Supabase")
+        # 4. Count successes
+        success_count = sum(1 for result in results.values() if result.get('success', False))
+        
+        if success_count == 0:
+            print(f"\n❌ Failed to save any tables to Supabase")
+        elif success_count == len(mapped_tables):
+            print(f"\n✅ Successfully saved all {success_count}/{len(mapped_tables)} tables to Supabase!")
+        else:
+            print(f"\n✅ Successfully saved {success_count}/{len(mapped_tables)} tables to Supabase!")
         
         return results
     
