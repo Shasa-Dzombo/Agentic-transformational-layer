@@ -292,8 +292,30 @@ class DynamicSchemaValidator:
         # Convert data types for existing fields
         enhanced_df = self._convert_data_types(enhanced_df, requirements)
         
+        # FIX: Add a final step to fill nulls in required columns like 'event_date'.
+        enhanced_df = self._fix_nulls_in_required_fields(enhanced_df, requirements)
+        
+        print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
         return enhanced_df
     
+    def _fix_nulls_in_required_fields(self, df: pd.DataFrame, requirements: TableRequirements) -> pd.DataFrame:
+        """
+        Iterates through required fields and fills any null values with
+        a generated default, ensuring NOT NULL constraints pass.
+        """
+        fixed_df = df.copy()
+        for field_name, field_req in requirements.required_fields.items():
+            # Check if the column exists and has nulls
+            if field_name in fixed_df.columns and fixed_df[field_name].isnull().any():
+                # Generate a single default value of the correct type
+                default_value = self._generate_field_values(field_req, 1, None)[0]
+                
+                # Fill nulls with this default value
+                fixed_df[field_name] = fixed_df[field_name].fillna(default_value)
+                print(f"   🔧 Fixed nulls in required column: '{field_name}'")
+        
+        return fixed_df
+
     def _generate_field_values(self, field_req: FieldRequirement, row_count: int, 
                              source_data_df: pd.DataFrame = None) -> List[Any]:
         """Generate appropriate default values for a field based on its requirements"""
@@ -355,10 +377,15 @@ class DynamicSchemaValidator:
             return f"CODE_{int(pd.Timestamp.now().timestamp())}"
         elif 'status' in field_lower:
             return "active"
+        
+        # FIX: Generate valid defaults that pass database CHECK constraints.
+        elif field_name == 'event_type':
+            return "birth" # A valid default for censoring_event.event_type
+        elif field_name == 'outcome':
+            return "live_birth" # A valid default for pregnancy.outcome
+            
         elif 'type' in field_lower:
             return "default"
-        elif 'outcome' in field_lower:
-            return "unknown"
         elif 'description' in field_lower:
             return "System generated"
         else:

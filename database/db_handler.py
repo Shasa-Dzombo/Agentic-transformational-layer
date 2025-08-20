@@ -239,73 +239,27 @@ class SupabaseClientHandler:
             }
 
     def _prepare_dataframe_for_supabase(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean and prepare DataFrame for Supabase insertion - handles ALL data type issues"""
+        """
+        Safely prepares a DataFrame for Supabase insertion. The only task
+        is to convert pandas-native nulls (pd.NA, pd.NaT, np.nan) into
+        Python's None, which the Supabase client library can serialize to NULL.
+        All other type conversions and cleaning are assumed to be complete.
+        """
+        print(f"  🧹 Finalizing data for Supabase insertion...")
         
-        print(f"  🧹 Cleaning data for Supabase insertion...")
-        
-        # Handle UUID to integer conversion first
-        for col in df.columns:
-            if col.endswith('_id') and df[col].dtype == 'object':
-                sample_val = str(df[col].dropna().iloc[0]) if not df[col].dropna().empty else ""
-                if len(sample_val) > 10 and '-' in sample_val:  # Looks like UUID
-                    print(f"  🔄 Converting UUID column {col} to sequential integers")
-                    unique_uuids = df[col].dropna().unique()
-                    uuid_to_int = {uuid: idx + 1 for idx, uuid in enumerate(unique_uuids)}
-                    df[col] = df[col].map(uuid_to_int)
-    
-        # Handle string length constraints FIRST
-        for col in df.columns:
-            if col.lower() in ['sex', 'gender']:
-                # Map to single characters for CHAR(1) fields
-                print(f"  🔄 Converting {col} to single character")
-                df[col] = df[col].map({
-                    'Male': 'M', 'Female': 'F', 'male': 'M', 'female': 'F',
-                    'M': 'M', 'F': 'F', 'm': 'M', 'f': 'F',
-                    1: 'M', 2: 'F', '1': 'M', '2': 'F'
-                })
-                # Fill any unmapped values with 'U' (Unknown)
-                df[col] = df[col].fillna('U')
-            
-            # Handle boolean columns
-            elif df[col].dtype == 'object' or df[col].dtype == 'bool':
-                unique_vals = set(str(v).lower() for v in df[col].unique() if pd.notna(v))
-                boolean_indicators = {'yes', 'no', 'true', 'false', '1', '0', 'y', 'n', 'not asked', 'niu (not in universe)'}
-                
-                if unique_vals.intersection(boolean_indicators):
-                    print(f"  🔄 Converting {col} to boolean")
-                    df[col] = df[col].map({
-                        'yes': True, 'no': False, 'true': True, 'false': False,
-                        '1': True, '0': False, 'y': True, 'n': False,
-                        1: True, 0: False, 1.0: True, 0.0: False,
-                        'Yes': True, 'No': False, 'True': True, 'False': False,
-                        'YES': True, 'NO': False, 'TRUE': True, 'FALSE': False,
-                        # Handle ALL problematic values as None (NULL in database)
-                        'not asked': None,
-                        'niu (not in universe)': None,
-                        'unknown': None,
-                        'missing': None,
-                        'n/a': None,
-                        'na': None,
-                        '': None,
-                        'dk': None,
-                        'ref': None,
-                        'skip': None,
-                        'inapplicable': None,
-                        'not applicable': None
-                    })
-                    df[col] = df[col].fillna(None)
-    
-        # Handle timestamp columns
-        for col in df.columns:
-            if 'datetime' in str(df[col].dtype):
-                df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
-            elif 'date' in str(df[col].dtype):
-                df[col] = df[col].astype(str)
+        # Create a copy to avoid modifying the original DataFrame in place.
+        clean_df = df.copy()
 
-        # Replace pandas NaN with None for JSON serialization
-        df = df.where(pd.notnull(df), None)
+        # Convert all timestamp columns to ISO 8601 format string, which Supabase handles reliably.
+        # This also handles NaT (Not a Time) correctly by converting it to None.
+        for col in clean_df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns:
+            clean_df[col] = clean_df[col].dt.strftime('%Y-%m-%dT%H:%M:%S.%f%z').replace({pd.NaT: None})
+
+        # Replace all remaining pandas/numpy null-like values with Python's None.
+        # The `where` method is a robust way to handle this across all dtypes.
+        clean_df = clean_df.where(pd.notna(clean_df), None)
         
-        return df
+        return clean_df
     
     def save_mapped_tables(self, mapped_tables: Dict[str, pd.DataFrame]) -> Dict[str, bool]:
         """Save all mapped tables to Supabase in dependency order"""
@@ -349,7 +303,6 @@ class SupabaseClientHandler:
                     print(f"  ❌ {table_name}: Table doesn't exist and couldn't be created")
                     results[table_name] = False
                     continue
-                
                 # Prepare data with enhanced cleaning
                 clean_df = df.copy()
                 

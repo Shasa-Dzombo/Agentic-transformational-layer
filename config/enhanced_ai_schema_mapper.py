@@ -545,38 +545,20 @@ Return ONLY valid JSON in this format:
             else:
                 print(f"   ⚠️  {table_name}: {len(validation['missing_required'])} required fields missing")
         
-        # Step 2: Enhance tables with missing requirements
+        # Step 2: Enhance tables with missing requirements using ONLY the validator
         print("\n🔧 Enhancing tables with schema requirements...")
         for table_name, table_df in mapped_tables.items():
             try:
-                # First, use the schema validator's enhancement
+                # The validator is now the single source of truth for enhancement.
                 enhanced_df = self.schema_validator.enhance_table_with_requirements(
                     table_name, table_df, source_df
                 )
-                
-                # Then, add our custom missing required fields generation
-                enhanced_df = self._generate_missing_required_fields(
-                    table_name, enhanced_df, source_df
-                )
-                
                 enhanced_tables[table_name] = enhanced_df
                 print(f"   ✅ Enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
                 
             except Exception as e:
                 print(f"   ❌ Failed to enhance {table_name}: {e}")
-                # Apply our custom enhancement as fallback
-                try:
-                    enhanced_df = self._generate_missing_required_fields(
-                        table_name, table_df, source_df
-                    )
-                    enhanced_tables[table_name] = enhanced_df
-                    print(f"   🔧 Fallback enhanced {table_name}: {len(enhanced_df)} rows, {len(enhanced_df.columns)} cols")
-                except Exception as e2:
-                    print(f"   ❌ Fallback also failed for {table_name}: {e2}")
-                    enhanced_tables[table_name] = table_df  # Use original if all enhancement fails
-        
-        # Step 2.5: Fix null dates specifically
-        enhanced_tables = self._fix_null_dates(enhanced_tables, source_df)
+                enhanced_tables[table_name] = table_df  # Use original if enhancement fails
         
         # Step 3: Final validation
         print("\n✅ Final validation after enhancement...")
@@ -651,16 +633,14 @@ Return ONLY valid JSON in this format:
         # Create base tables
         base_tables = self._create_tables(df, mapping_result, intelligent_analysis)
         
-        # Dynamic validation and enhancement
+        # Dynamic validation and enhancement is the final step.
         enhanced_tables = self.validate_and_enhance_tables(base_tables, df)
         
-        # Prepare for Supabase
-        supabase_ready_tables = self.prepare_for_supabase(enhanced_tables)
-        
         # Print final summary
-        self._print_enhanced_summary(mapping_result, supabase_ready_tables, intelligent_analysis)
+        self._print_enhanced_summary(mapping_result, enhanced_tables, intelligent_analysis)
         
-        return supabase_ready_tables
+        # FIX: Return the correctly enhanced tables directly.
+        return enhanced_tables
 
     def _validate_mappings(self, mapping_result: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
         """Validate mappings against actual schema"""
@@ -713,109 +693,7 @@ Return ONLY valid JSON in this format:
         print(f"\n🎯 Dynamic schema-driven mapping completed successfully! ✅")
         print(f"💡 All tables now comply with schema requirements automatically")
 
-    def _convert_to_boolean(self, series: pd.Series) -> pd.Series:
-        """Convert various formats to boolean with comprehensive mapping"""
-        
-        bool_mapping = {
-            'yes': True, 'no': False, 'true': True, 'false': False,
-            '1': True, '0': False, 1: True, 0: False,
-            'niu (not in universe)': None,
-            'not asked': None,
-            'don\'t know': None,
-            'missing': None,
-            'na': None,
-            '': None,
-            'nan': None
-        }
-        
-        result = series.astype(str).str.lower().map(bool_mapping)
-        return result.fillna(value=False)
-
-    def prepare_for_supabase(self, enhanced_tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-        """Prepare tables for Supabase insertion by cleaning data types"""
-        
-        cleaned_tables = {}
-        
-        for table_name, df in enhanced_tables.items():
-            print(f"🔧 Preparing {table_name} for Supabase...")
-            
-            clean_df = df.copy()
-            
-            # Better boolean detection and conversion
-            for col in clean_df.columns:
-                if clean_df[col].dtype == 'object':
-                    # Get unique non-null values as strings
-                    unique_vals = set(str(v).lower() for v in clean_df[col].dropna().unique())
-                    
-                    # Check if this looks like boolean data
-                    boolean_indicators = {'yes', 'no', 'true', 'false', '1', '0'}
-                    survey_indicators = {'niu (not in universe)', 'not asked'}
-                    
-                    if unique_vals.intersection(boolean_indicators) or unique_vals.intersection(survey_indicators):
-                        print(f"   🔄 Converting {col} to boolean")
-                        clean_df[col] = self._convert_to_boolean(clean_df[col])
-            
-            # Handle dates
-            for col in clean_df.columns:
-                if 'date' in col.lower() and clean_df[col].dtype == 'object':
-                    print(f"   📅 Converting {col} to datetime")
-                    clean_df[col] = pd.to_datetime(clean_df[col], errors='coerce')
-            
-            # Handle null values properly for each data type
-            for col in clean_df.columns:
-                if clean_df[col].dtype == 'object':
-                    clean_df[col] = clean_df[col].where(pd.notnull(clean_df[col]), None)
-                elif pd.api.types.is_numeric_dtype(clean_df[col]):
-                    clean_df[col] = clean_df[col].where(pd.notnull(clean_df[col]), None)
-            
-            cleaned_tables[table_name] = clean_df
-            print(f"   ✅ {table_name} prepared with {len(clean_df)} rows")
-        
-        return cleaned_tables
-
-    def _generate_missing_required_fields(self, table_name: str, enhanced_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate missing required fields based on table requirements"""
-        
-        if table_name not in self.tables:
-            return enhanced_df
-        
-        table_config = self.tables[table_name]
-        columns_config = table_config.get('columns', {})
-        
-        for col_name, col_config in columns_config.items():
-            if col_name not in enhanced_df.columns:
-                if not col_config.get('nullable', True):  # Required field
-                    print(f"   🔧 Generating required field: {col_name}")
-                    
-                    if col_name.endswith('_id'):
-                        enhanced_df[col_name] = range(1, len(enhanced_df) + 1)
-                    elif col_name == 'event_date' and table_name == 'censoring_event':
-                        enhanced_df[col_name] = pd.to_datetime('2024-01-01')
-                    elif col_name == 'outcome' and table_name == 'pregnancy':
-                        enhanced_df[col_name] = 'live_birth'
-                    elif col_name == 'event_type' and table_name == 'censoring_event':
-                        enhanced_df[col_name] = 'end_of_study'
-                    elif 'name' in col_name:
-                        enhanced_df[col_name] = [f"Generated_{i}" for i in range(1, len(enhanced_df) + 1)]
-                    else:
-                        enhanced_df[col_name] = f'default_{col_name}'
-        
-        return enhanced_df
-
-    def _fix_null_dates(self, enhanced_tables: Dict[str, pd.DataFrame], source_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-        """Fix null dates by using actual source data"""
-        
-        for table_name, df in enhanced_tables.items():
-            if table_name == 'censoring_event' and 'event_date' in df.columns:
-                # Use actual censor_birth data if available
-                if 'censor_birth' in source_df.columns:
-                    # Get the actual dates from source
-                    actual_dates = pd.to_datetime(source_df['censor_birth'].iloc[:len(df)], errors='coerce')
-                    # Fill null values with default date
-                    df['event_date'] = actual_dates.fillna(value=pd.to_datetime('2024-01-01'))
-                    print(f"   🔧 Fixed event_date nulls in {table_name}")
-                else:
-                    # Fallback to default date
-                    df['event_date'] = pd.to_datetime('2024-01-01')
-
-        return enhanced_tables
+    # FIX: All methods below this line have been removed.
+    # The DynamicSchemaValidator and SupabaseClientHandler now handle all
+    # data preparation, cleaning, and type conversion correctly.
+    # This prevents the conflicting logic that was causing errors.
