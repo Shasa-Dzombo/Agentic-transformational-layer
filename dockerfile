@@ -20,7 +20,7 @@ COPY . .
 RUN mkdir -p /app/temp
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8001
 
 # Command to run the application
-CMD ["uvicorn", "myapi:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "main.py"]
