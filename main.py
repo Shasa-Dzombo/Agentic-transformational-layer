@@ -19,7 +19,7 @@ def main():
     import uvicorn
     
     # Get configuration from environment variables
-    HOST = os.getenv("HOST", "localhost")
+    HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT", "8001"))
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
     RELOAD = os.getenv("RELOAD", "false").lower() == "true"
