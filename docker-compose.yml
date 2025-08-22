@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/avenv  # Exclude virtual environment
+    working_dir: /app
+    command: uvicorn myapi:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - PYTHONPATH=/app
